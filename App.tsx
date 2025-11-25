@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { GoogleGenAI, GenerateContentResponse, Type, Modality } from "@google/genai";
+import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { ReactionCanvas } from './components/ReactionCanvas';
@@ -107,7 +106,7 @@ async function generateImage(prompt: string): Promise<string> {
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash-image',
         contents: { parts: [{ text: prompt }] },
-        config: { responseModalities: [Modality.IMAGE] }
+        // Removed Modality.IMAGE constraint for robustness
     });
     const part = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
     if (part?.inlineData?.data) {

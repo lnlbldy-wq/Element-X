@@ -1,5 +1,6 @@
+
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { GoogleGenAI, Modality } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { COMMON_COMPOUNDS } from '../constants';
 
 // Internal type to manage image loading states
@@ -58,7 +59,7 @@ const fetchCompoundImage = async (name: string, formula: string): Promise<string
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash-image',
                 contents: { parts: [{ text: imagePrompt }] },
-                config: { responseModalities: [Modality.IMAGE] },
+                // Removed Modality.IMAGE constraint for robustness
             });
             
             const partWithImageData = response?.candidates?.[0]?.content?.parts?.find(p => p.inlineData);

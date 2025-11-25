@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import type { Reaction } from '../types';
-import { GoogleGenAI, GenerateContentResponse, Type, Modality } from "@google/genai";
+import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
 
 interface MoleculeInfoCardProps {
   reaction: Reaction;
@@ -265,9 +265,7 @@ export const MoleculeInfoCard: React.FC<MoleculeInfoCardProps> = ({ reaction, on
                       },
                   ],
               },
-              config: {
-                  responseModalities: [Modality.IMAGE],
-              },
+              // Removed Modality.IMAGE constraint for robustness
           }));
 
           const partWithImageData = response?.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
