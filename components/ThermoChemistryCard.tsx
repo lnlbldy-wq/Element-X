@@ -1,3 +1,4 @@
+
 import React from 'react';
 import type { ThermoChemistryInfo } from '../types';
 
@@ -6,28 +7,34 @@ interface ThermoChemistryCardProps {
   onNew: () => void;
 }
 
-const ValueDisplay: React.FC<{ label: string; value: string; unit: string }> = ({ label, value, unit }) => (
-    <div className="flex-1 bg-white/50 dark:bg-slate-900/50 p-4 rounded-lg border border-slate-300 dark:border-slate-700 text-center">
-        <h4 className="text-md text-slate-600 dark:text-slate-400 font-semibold">{label}</h4>
-        <p className="text-2xl font-bold text-cyan-600 dark:text-cyan-300 mt-1">
-            {value} <span className="text-lg font-normal text-slate-500">{unit}</span>
+const ValueDisplay: React.FC<{ label: string; value: string; unit?: string; subValue?: string }> = ({ label, value, unit, subValue }) => (
+    <div className="flex-1 bg-white/50 dark:bg-slate-900/50 p-4 rounded-lg border border-slate-300 dark:border-slate-700 text-center flex flex-col justify-center min-w-[150px]">
+        <h4 className="text-sm text-slate-600 dark:text-slate-400 font-semibold mb-1">{label}</h4>
+        <p className="text-xl font-bold text-cyan-600 dark:text-cyan-300">
+            {value} <span className="text-sm font-normal text-slate-500">{unit}</span>
         </p>
+        {subValue && <p className="text-xs text-slate-400 mt-1">{subValue}</p>}
     </div>
 );
 
 export const ThermoChemistryCard: React.FC<ThermoChemistryCardProps> = ({ info, onNew }) => {
   return (
-    <div className="bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl shadow-2xl p-6 w-full max-w-3xl m-4 text-slate-800 dark:text-white relative flex flex-col animate-slide-up max-h-[90vh] overflow-y-auto scrollbar-hide">
+    <div className="bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl shadow-2xl p-6 w-full max-w-4xl m-4 text-slate-800 dark:text-white relative flex flex-col animate-slide-up max-h-[90vh] overflow-y-auto scrollbar-hide">
       <h2 className="text-3xl font-bold text-cyan-600 dark:text-cyan-300 mb-2 text-center">تحليل الكيمياء الحرارية</h2>
       <p dir="ltr" className="text-xl font-mono text-slate-600 dark:text-slate-300 mb-6 text-center">{info.equation}</p>
 
       <div className="w-full bg-white/50 dark:bg-slate-900/50 p-4 rounded-lg border border-slate-300 dark:border-slate-700 mb-4">
         <h3 className="text-lg text-cyan-600 dark:text-cyan-400 font-semibold mb-2 text-center">مخطط طاقة التفاعل</h3>
         <div className="bg-white dark:bg-slate-900 p-2 rounded-md shadow-inner flex justify-center items-center min-h-[250px]">
-          {info.energyProfileImage ? (
+          {info.energyProfileImage === 'PENDING' ? (
+             <p className="animate-pulse text-slate-500">...جاري تحميل المخطط</p>
+          ) : info.energyProfileImage ? (
             <img src={info.energyProfileImage} alt="Energy Profile Diagram" className="max-w-full h-auto" />
           ) : (
-            <p className="animate-pulse text-slate-500">...جاري تحميل المخطط</p>
+            <div className="text-center opacity-60">
+                 <div className="text-4xl mb-2">🔥</div>
+                 <p className="text-xs text-slate-500">المخطط غير متوفر</p>
+            </div>
           )}
         </div>
       </div>
@@ -46,11 +53,34 @@ export const ThermoChemistryCard: React.FC<ThermoChemistryCardProps> = ({ info, 
           </div>
       </div>
       
-      <div className="grid md:grid-cols-3 gap-4 mb-4">
+      <h3 className="text-lg text-slate-700 dark:text-slate-300 font-bold mb-3 mt-2 border-b border-slate-200 dark:border-slate-700 pb-2">الدوال الديناميكية الحرارية</h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mb-6">
         <ValueDisplay label="ΔH° (الإنثالبي)" value={info.enthalpyChange.split(' ')[0]} unit={info.enthalpyChange.split(' ')[1] || ''} />
         <ValueDisplay label="ΔS° (الإنتروبي)" value={info.entropyChange.split(' ')[0]} unit={info.entropyChange.split(' ')[1] || ''} />
         <ValueDisplay label="ΔG° (طاقة غيبس)" value={info.gibbsFreeEnergyChange.split(' ')[0]} unit={info.gibbsFreeEnergyChange.split(' ')[1] || ''} />
       </div>
+
+      <h3 className="text-lg text-slate-700 dark:text-slate-300 font-bold mb-3 mt-2 border-b border-slate-200 dark:border-slate-700 pb-2">الحركية والاتزان</h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+         <ValueDisplay label="طاقة التنشيط (Ea)" value={info.activationEnergy || "N/A"} />
+         <ValueDisplay label="ثابت الاتزان (Keq)" value={info.equilibriumConstant || "N/A"} subValue="قيمة تقريبية" />
+      </div>
+
+      {info.rateFactors && info.rateFactors.length > 0 && (
+          <div className="w-full text-right bg-white/50 dark:bg-slate-900/50 p-4 rounded-lg border border-slate-300 dark:border-slate-700 mb-4">
+              <h3 className="text-lg text-slate-700 dark:text-slate-300 font-bold mb-3 border-b border-slate-200 dark:border-slate-700 pb-1">
+                  ⚡ عوامل سرعة التفاعل
+              </h3>
+              <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {info.rateFactors.map((factor, index) => (
+                      <li key={index} className="flex items-center gap-2 p-2 bg-slate-50 dark:bg-slate-800 rounded-md border border-slate-200 dark:border-slate-700 shadow-sm transition-transform hover:scale-[1.02]">
+                          <span className="text-indigo-500 text-lg">•</span>
+                          <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{factor}</span>
+                      </li>
+                  ))}
+              </ul>
+          </div>
+      )}
       
       <div className="w-full text-right bg-white/50 dark:bg-slate-900/50 p-4 rounded-lg border border-slate-300 dark:border-slate-700 mb-4">
         <h3 className="text-lg text-cyan-600 dark:text-cyan-400 font-semibold mb-2">شرح التحليل</h3>

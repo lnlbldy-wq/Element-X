@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import type { OrganicCompoundInfo } from '../types';
 
@@ -18,6 +19,19 @@ const ComparisonRow: React.FC<{ label: string; valueA?: string; valueB?: string 
         <td className="p-3 text-center">{valueB ?? '-'}</td>
     </tr>
 );
+
+const ImageContainer: React.FC<{ imageUrl?: string, name: string }> = ({ imageUrl, name }) => (
+    <div className="flex justify-center items-center min-h-[150px] bg-white dark:bg-slate-900/50 rounded-lg">
+        {imageUrl === 'PENDING' ? (
+             <p className="animate-pulse text-slate-500 text-sm">...جاري التحميل</p>
+        ) : imageUrl ? (
+            <img src={imageUrl} alt={`Structure for ${name}`} className="max-w-full h-auto mx-auto" />
+        ) : (
+            <span className="text-3xl opacity-50">🧪</span>
+        )}
+    </div>
+);
+
 
 const ComparisonSection: React.FC<{ title: string, contentA: React.ReactNode, contentB: React.ReactNode }> = ({ title, contentA, contentB }) => (
     <div className="mt-6">
@@ -57,8 +71,8 @@ export const OrganicCompoundComparisonCard: React.FC<OrganicCompoundComparisonCa
 
       <ComparisonSection 
         title="تركيب لويس"
-        contentA={<img src={infoA.lewisStructureImage} alt={`Lewis structure for ${infoA.name}`} className="max-w-full h-auto mx-auto" />}
-        contentB={<img src={infoB.lewisStructureImage} alt={`Lewis structure for ${infoB.name}`} className="max-w-full h-auto mx-auto" />}
+        contentA={<ImageContainer imageUrl={infoA.lewisStructureImage} name={infoA.name} />}
+        contentB={<ImageContainer imageUrl={infoB.lewisStructureImage} name={infoB.name} />}
       />
 
       <ComparisonSection 

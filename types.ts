@@ -19,6 +19,7 @@ export interface Reaction {
   formula: string;
   emoji: string;
   reactants: string[];
+  reactionType?: string; // Added field for reaction classification
   bondType: string;
   explanation: string;
   molecularDensity?: string;
@@ -35,6 +36,13 @@ export interface Reaction {
     ghsSymbols: string[];
   };
   namingMethod?: string;
+  // Comprehensive Data Fields
+  hybridization?: string; // e.g., sp3, sp2
+  polarity?: string; // e.g., Polar, Non-polar
+  solubility?: string; // e.g., Soluble in water
+  magneticProfile?: string; // e.g., Diamagnetic, Paramagnetic
+  crystalStructure?: string; // e.g., Cubic, Hexagonal
+  discovery?: string; // e.g., Discovered by X in Y
 }
 
 export interface Product {
@@ -50,6 +58,10 @@ export interface CompoundReaction {
   explanation: string;
   products: Product[];
   safetyNotes: string[];
+  // New Fields
+  enthalpy?: string; // e.g. Exothermic
+  visualObservation?: string; // e.g. "Blue precipitate forms"
+  conditions?: string; // e.g. "Requires heat"
 }
 
 export interface OrganicCompoundInfo {
@@ -63,7 +75,13 @@ export interface OrganicCompoundInfo {
   iupacNaming: string;
   boilingPoint?: string;
   meltingPoint?: string;
-  lewisStructureImage?: string; // To hold the base64 image URL
+  lewisStructureImage?: string; 
+  // New Fields
+  density?: string;
+  solubility?: string; // Water vs Organic solvents
+  isomersCount?: string; // Approx number of isomers
+  toxicity?: string;
+  reactivity?: string; // Typical reactions
 }
 
 export interface BiomoleculeInfo {
@@ -74,6 +92,11 @@ export interface BiomoleculeInfo {
   description: string;
   biologicalFunction: string;
   structureImage: string;
+  // New Fields
+  molecularWeight?: string;
+  occurrence?: string; // Where found in nature
+  metabolicRole?: string; // Role in metabolism
+  deficiencyEffects?: string;
 }
 
 export interface GalvanicCellInfo {
@@ -90,6 +113,10 @@ export interface GalvanicCellInfo {
   cellPotential: string;
   explanation: string;
   diagramImage: string;
+  // New Fields
+  cellNotation?: string; // Zn | Zn2+ || Cu2+ | Cu
+  gibbsFreeEnergy?: string; // -nFE
+  spontaneity?: string;
 }
 
 export interface ThermoChemistryInfo {
@@ -101,7 +128,11 @@ export interface ThermoChemistryInfo {
   isExothermic: boolean;
   isSpontaneous: boolean;
   explanation: string;
-  energyProfileImage: string; // base64 URL
+  energyProfileImage: string; 
+  // New Fields
+  activationEnergy?: string;
+  equilibriumConstant?: string; // K_eq
+  rateFactors?: string[]; // CHANGED to string array
 }
 
 export interface SolutionChemistryInfo {
@@ -112,7 +143,12 @@ export interface SolutionChemistryInfo {
   concentrationMolarity: string;
   solutionDescription: string;
   solutionType: string; // e.g., "محلول إلكتروليتي قوي", "محلول غير إلكتروليتي"
-  solutionImage: string; // base64 URL
+  solutionImage: string;
+  // New Fields
+  phLevel?: string;
+  boilingPointElevation?: string;
+  freezingPointDepression?: string;
+  conductivity?: string;
 }
 
 

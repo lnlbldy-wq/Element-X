@@ -1,3 +1,4 @@
+
 import React from 'react';
 import type { GalvanicCellInfo } from '../types';
 
@@ -11,18 +12,36 @@ export const GalvanicCellCard: React.FC<{ info: GalvanicCellInfo; onNew: () => v
       <div className="w-full bg-white/50 dark:bg-slate-900/50 p-4 rounded-lg border border-slate-300 dark:border-slate-700 mb-4">
         <h3 className="text-lg text-cyan-600 dark:text-cyan-400 font-semibold mb-2 text-center">مخطط الخلية</h3>
         <div className="bg-white dark:bg-slate-900 p-2 rounded-md shadow-inner flex justify-center items-center min-h-[250px]">
-          {info.diagramImage ? (
+          {info.diagramImage === 'PENDING' ? (
+             <p className="animate-pulse text-slate-500">...جاري تحميل المخطط</p>
+          ) : info.diagramImage ? (
             <img src={info.diagramImage} alt="Galvanic Cell Diagram" className="max-w-full h-auto" />
           ) : (
-            <p className="animate-pulse text-slate-500">...جاري تحميل المخطط</p>
+             <div className="text-center opacity-60">
+                 <div className="text-4xl mb-2">⚡</div>
+                 <p className="text-xs text-slate-500">المخطط غير متوفر</p>
+            </div>
           )}
         </div>
       </div>
       
-      <div className="w-full text-center bg-white/50 dark:bg-slate-900/50 p-4 rounded-lg border border-slate-300 dark:border-slate-700 mb-4">
-        <h3 className="text-lg text-slate-700 dark:text-slate-300 font-semibold mb-2">جهد الخلية القياسي (E°cell)</h3>
-        <p dir="ltr" className="text-3xl font-mono py-2 text-emerald-600 dark:text-emerald-300 font-bold">{info.cellPotential}</p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div className="text-center bg-white/50 dark:bg-slate-900/50 p-4 rounded-lg border border-slate-300 dark:border-slate-700">
+            <h3 className="text-sm text-slate-600 dark:text-slate-400 font-semibold mb-1">جهد الخلية القياسي (E°cell)</h3>
+            <p dir="ltr" className="text-2xl font-mono text-emerald-600 dark:text-emerald-300 font-bold">{info.cellPotential}</p>
+          </div>
+           <div className="text-center bg-white/50 dark:bg-slate-900/50 p-4 rounded-lg border border-slate-300 dark:border-slate-700">
+            <h3 className="text-sm text-slate-600 dark:text-slate-400 font-semibold mb-1">طاقة غيبس الحرة (ΔG°)</h3>
+            <p dir="ltr" className="text-2xl font-mono text-indigo-600 dark:text-indigo-300 font-bold">{info.gibbsFreeEnergy || "N/A"}</p>
+          </div>
       </div>
+      
+      {info.cellNotation && (
+           <div className="w-full text-center bg-slate-200 dark:bg-slate-700 p-3 rounded-lg border border-slate-300 dark:border-slate-600 mb-4">
+                <h3 className="text-xs text-slate-500 dark:text-slate-400 font-semibold mb-1 uppercase tracking-widest">الرمز الاصطلاحي للخلية</h3>
+                <code dir="ltr" className="text-xl font-mono font-bold text-slate-800 dark:text-slate-100">{info.cellNotation}</code>
+           </div>
+      )}
 
       <div className="grid md:grid-cols-2 gap-4 mb-4 text-center">
         <div className="w-full bg-red-100 dark:bg-red-900/50 p-4 rounded-lg border border-red-300 dark:border-red-700">

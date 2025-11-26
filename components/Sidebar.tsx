@@ -1,3 +1,4 @@
+
 import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import type { Atom } from '../types';
 import { AtomIcon } from './AtomIcon';
@@ -85,8 +86,6 @@ const smoothScrollBy = (element: HTMLElement, amount: number, duration: number) 
 };
 
 // Moved the biomolecules constant outside the component to prevent it from being recreated on every render.
-// This improves performance and fixes a TypeScript type inference issue.
-// Explicitly type the 'biomolecules' constant as 'Record<string, string[]>' to resolve a TypeScript type inference issue.
 const biomolecules: Record<string, string[]> = {
     'كربوهيدرات': ['جلوكوز', 'فركتوز', 'سكروز', 'نشا', 'سليلوز'],
     'بروتينات (أحماض أمينية)': ['جلايسين', 'ألانين', 'فالين', 'فينيل ألانين', 'تربتوفان'],
@@ -152,11 +151,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const checkScrollability = useCallback(() => {
     const el = scrollContainerRef.current;
     if (el) {
-      setCanScrollUp(el.scrollTop > 0);
-      setCanScrollDown(el.scrollTop < el.scrollHeight - el.clientHeight);
+      setCanScrollUp(el.scrollTop > 5);
+      setCanScrollDown(el.scrollTop + el.clientHeight < el.scrollHeight - 5);
     }
   }, []);
   
+  const filteredAtoms = useMemo(() => {
+      if (!searchTerm) return atoms;
+      const lowerCaseSearchTerm = searchTerm.toLowerCase();
+      return atoms.filter(atom => 
+        atom.name.toLowerCase().includes(lowerCaseSearchTerm) ||
+        atom.symbol.toLowerCase().includes(lowerCaseSearchTerm)
+      );
+  }, [atoms, searchTerm]);
+
   useEffect(() => {
     checkScrollability();
     const el = scrollContainerRef.current;
@@ -166,7 +174,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       el?.removeEventListener('scroll', checkScrollability);
       window.removeEventListener('resize', checkScrollability);
     };
-  }, [checkScrollability, currentMode]);
+  }, [checkScrollability, currentMode, filteredAtoms]);
 
   const handleScroll = (direction: 'up' | 'down') => {
     const el = scrollContainerRef.current;
@@ -175,15 +183,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       smoothScrollBy(el, scrollAmount, 300);
     }
   };
-
-  const filteredAtoms = useMemo(() => {
-      if (!searchTerm) return atoms;
-      const lowerCaseSearchTerm = searchTerm.toLowerCase();
-      return atoms.filter(atom => 
-        atom.name.toLowerCase().includes(lowerCaseSearchTerm) ||
-        atom.symbol.toLowerCase().includes(lowerCaseSearchTerm)
-      );
-  }, [atoms, searchTerm]);
 
   const handleSuggestionClick = (compound: { name: string; formula: string }) => {
     if (activeInput === 'reactant1') {
@@ -234,18 +233,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
           />
         </div>
 
-        <div className="relative flex-grow">
-          {canScrollUp && (
+        <div className="relative flex-grow overflow-hidden">
+          {/* Scroll Up Button - Enhanced visibility */}
+          <div className={`absolute top-0 left-0 w-full flex justify-center z-20 transition-all duration-300 ${canScrollUp ? 'opacity-100 translate-y-2' : 'opacity-0 -translate-y-full pointer-events-none'}`}>
             <button
               onClick={() => handleScroll('up')}
-              className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-8 bg-gradient-to-b from-slate-100 dark:from-slate-800 to-transparent z-10 flex items-start justify-center text-slate-500 dark:text-slate-400"
+              className="bg-cyan-500 hover:bg-cyan-600 text-white shadow-lg rounded-full p-2 border-2 border-white dark:border-slate-800 transition-transform active:scale-95 animate-bounce"
               aria-label="Scroll up"
             >
-              ▲
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clipRule="evenodd" />
+              </svg>
             </button>
-          )}
+          </div>
 
-          <div ref={scrollContainerRef} className="h-full overflow-y-auto p-4 scrollbar-hide">
+          <div ref={scrollContainerRef} className="h-full overflow-y-auto p-4 scrollbar-hide pb-16">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               {filteredAtoms.map((atom) => (
                 <div
@@ -264,15 +266,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           </div>
 
-          {canScrollDown && (
+          {/* Scroll Down Button - Enhanced visibility */}
+          <div className={`absolute bottom-0 left-0 w-full flex justify-center z-20 transition-all duration-300 ${canScrollDown ? 'opacity-100 -translate-y-2' : 'opacity-0 translate-y-full pointer-events-none'}`}>
             <button
               onClick={() => handleScroll('down')}
-              className="absolute bottom-0 left-1/2 -translate-x-1/2 w-3/4 h-8 bg-gradient-to-t from-slate-100 dark:from-slate-800 to-transparent z-10 flex items-end justify-center text-slate-500 dark:text-slate-400"
+              className="bg-cyan-500 hover:bg-cyan-600 text-white shadow-lg rounded-full p-2 border-2 border-white dark:border-slate-800 transition-transform active:scale-95 animate-bounce"
               aria-label="Scroll down"
             >
-              ▼
+               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
             </button>
-          )}
+          </div>
         </div>
     </>
   );
@@ -340,7 +345,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   );
   
   const renderOrganicModeContent = () => (
-     <div className="p-4 h-full flex flex-col justify-center">
+     <div className="p-4 h-full flex flex-col justify-center overflow-y-auto">
         <h3 className="text-xl font-bold text-center mb-4">الكيمياء العضوية</h3>
         
         <div className="flex justify-center mb-4">
@@ -431,7 +436,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   );
 
    const renderBioModeContent = () => (
-     <div className="p-4 h-full flex flex-col justify-center">
+     <div className="p-4 h-full flex flex-col justify-center overflow-y-auto">
         <h3 className="text-xl font-bold text-center mb-4">الكيمياء الحيوية</h3>
         <p className="text-sm text-center text-slate-500 dark:text-slate-400 mb-6">
             اختر جزيئًا حيويًا شائعًا من القوائم أدناه لعرض معلومات مفصلة عنه.
@@ -461,7 +466,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   );
   
   const renderElectroModeContent = () => (
-     <div className="p-4 h-full flex flex-col justify-center">
+     <div className="p-4 h-full flex flex-col justify-center overflow-y-auto">
         <h3 className="text-xl font-bold text-center mb-4">الكيمياء الكهربائية</h3>
          <p className="text-sm text-center text-slate-500 dark:text-slate-400 mb-6">
             اختر قطبين لبناء خلية جلفانية ومحاكاة عملها.
@@ -491,7 +496,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   );
 
   const renderThermoModeContent = () => (
-     <div className="p-4 h-full flex flex-col justify-center">
+     <div className="p-4 h-full flex flex-col justify-center overflow-y-auto">
         <h3 className="text-xl font-bold text-center mb-4">الكيمياء الحرارية</h3>
          <p className="text-sm text-center text-slate-500 dark:text-slate-400 mb-6">
             أدخل معادلة كيميائية موزونة لتحليل تغيرات الطاقة المصاحبة لها.
@@ -521,7 +526,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   );
 
   const renderSolutionModeContent = () => (
-     <div className="p-4 h-full flex flex-col justify-center">
+     <div className="p-4 h-full flex flex-col justify-center overflow-y-auto">
         <h3 className="text-xl font-bold text-center mb-4">كيمياء المحاليل</h3>
          <p className="text-sm text-center text-slate-500 dark:text-slate-400 mb-6">
             اختر مذابًا ومذيبًا وحدد التركيز لتحليل عملية الذوبان.

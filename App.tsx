@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
 import { Header } from './components/Header';
@@ -15,111 +16,42 @@ import { ThermoChemistryCard } from './components/ThermoChemistryCard';
 import { SolutionChemistryCard } from './components/SolutionChemistryCard';
 import { CompoundSelector } from './components/CompoundSelector';
 import { ATOMS } from './constants';
+import { cleanAndParseJSON, ImageManager } from './utils';
 import type { Atom, Reaction, CompoundReaction, OrganicCompoundInfo, BiomoleculeInfo, GalvanicCellInfo, ThermoChemistryInfo, SolutionChemistryInfo } from './types';
 
 type AppState = 'welcome' | 'simulation';
 type SimulationMode = 'atoms' | 'compounds' | 'organic' | 'biochemistry' | 'electrochemistry' | 'thermochemistry' | 'solution';
 type Theme = 'light' | 'dark';
 
-const isRetryableError = (error: any): boolean => {
-    if (!error) return false;
-
-    const code = error?.error?.code;
-    if (code === 429 || code === 500 || code === 503) {
-        return true;
-    }
-
-    const status = (error?.error?.status || '').toUpperCase();
-    if (status === 'RESOURCE_EXHAUSTED' || status === 'UNAVAILABLE' || status === 'UNKNOWN') {
-        return true;
-    }
-    
-    const message = (error.message || error.toString() || '').toLowerCase();
-    return (
-        message.includes('429') ||
-        message.includes('500') ||
-        message.includes('503') ||
-        message.includes('quota') ||
-        message.includes('rate limit') ||
-        message.includes('resource_exhausted') ||
-        message.includes('service unavailable') ||
-        message.includes('xhr error')
-    );
-};
-
-async function callApiWithRetry<T>(apiCall: () => Promise<T>): Promise<T> {
-    const MAX_RETRIES = 3;
+// Enhanced retry logic for TEXT ONLY
+async function callApiWithRetry<T>(apiCall: () => Promise<T>, maxRetries = 3): Promise<T> {
     let attempt = 0;
-    while (attempt < MAX_RETRIES) {
+    while (attempt < maxRetries) {
         try {
             return await apiCall();
         } catch (error: any) {
             attempt++;
-            if (isRetryableError(error) && attempt < MAX_RETRIES) {
-                const delay = Math.pow(2, attempt) * 10000 + Math.random() * 1000;
-                console.warn(`API call failed. Retrying in ${Math.round(delay)}ms... (Attempt ${attempt})`, error);
-                await new Promise(resolve => setTimeout(resolve, delay));
-            } else {
-                console.error("API call failed after retries or with non-retryable error.", error);
-                throw error;
-            }
+            if (attempt >= maxRetries) throw error;
+            await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt)));
         }
     }
-    throw new Error(`API call failed after ${MAX_RETRIES} attempts.`);
+    throw new Error("Failed after retries");
 };
 
-// Robust JSON extraction helper
-function cleanAndParseJSON(text: string): any {
-  if (!text) return null;
-  try {
-    // 1. Try strict parsing first
-    return JSON.parse(text);
-  } catch (e) {
-    // 2. Remove markdown code blocks
-    let cleaned = text.replace(/```json\s*|\s*```/gi, '').trim();
-    try {
-      return JSON.parse(cleaned);
-    } catch (e2) {
-        // 3. Last resort: Extract content between first { and last } or [ and ]
-        const firstCurly = cleaned.indexOf('{');
-        const lastCurly = cleaned.lastIndexOf('}');
-        const firstSquare = cleaned.indexOf('[');
-        const lastSquare = cleaned.lastIndexOf(']');
-
-        let jsonString = cleaned;
-
-        // Determine if it looks like an object or array and slice accordingly
-        if (firstCurly !== -1 && lastCurly !== -1 && (firstSquare === -1 || firstCurly < firstSquare)) {
-             jsonString = cleaned.substring(firstCurly, lastCurly + 1);
-        } else if (firstSquare !== -1 && lastSquare !== -1) {
-             jsonString = cleaned.substring(firstSquare, lastSquare + 1);
-        }
-        
-        return JSON.parse(jsonString);
-    }
-  }
-}
-
-// Helper for image generation to keep main component cleaner
-async function generateImage(prompt: string): Promise<string> {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
-        contents: { parts: [{ text: prompt }] },
-        // Removed Modality.IMAGE constraint for robustness
-    });
-    const part = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
-    if (part?.inlineData?.data) {
-        return `data:image/png;base64,${part.inlineData.data}`;
-    }
-    throw new Error('No image data generated');
-}
-
+// SHARED SYSTEM INSTRUCTION FOR ACADEMIC ARABIC
+const ACADEMIC_CHEMIST_PROMPT = `
+You are an expert Academic Chemistry Professor (بروفيسور كيميائي أكاديمي). 
+Your goal is to provide highly accurate, scientific, and educational responses in fluent, eloquent Arabic (اللغة العربية الفصحى السلسة).
+Avoid robotic or literal translations. Use proper scientific terminology.
+Provide deep insights, historical context where relevant, and clear explanations.
+Always ensure the output is valid JSON strictly adhering to the schema.
+`;
 
 const App: React.FC = () => {
   const [appState, setAppState] = useState<AppState>('welcome');
   const [simulationMode, setSimulationMode] = useState<SimulationMode>('atoms');
   const [theme, setTheme] = useState<Theme>('light');
+  const [missingApiKey, setMissingApiKey] = useState(false);
   
   // Atoms Mode State
   const [placedAtoms, setPlacedAtoms] = useState<Atom[]>([]);
@@ -164,6 +96,9 @@ const App: React.FC = () => {
   const canvasRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (!process.env.API_KEY) {
+        setMissingApiKey(true);
+    }
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
     } else {
@@ -216,9 +151,10 @@ const App: React.FC = () => {
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const response = await callApiWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Identify up to 3 possible chemical reactions or molecules formed by exactly these atoms: ${atomString}. If the atoms can form a stable molecule (e.g., 2 H and 1 O form water), return it.`,
+            contents: `Identify up to 3 possible chemical reactions or molecules formed by exactly these atoms: ${atomString}. 
+            If the atoms can form a stable molecule, return it. Classify reaction type. Provide detailed advanced properties like hybridization, polarity, etc.`,
             config: {
-                systemInstruction: "You are an expert chemistry assistant. You strictly output valid JSON. All explanations and text values must be in Arabic language.",
+                systemInstruction: ACADEMIC_CHEMIST_PROMPT,
                 responseMimeType: 'application/json',
                 responseSchema: {
                     type: Type.ARRAY,
@@ -229,8 +165,9 @@ const App: React.FC = () => {
                             name: {type: Type.STRING},
                             formula: {type: Type.STRING},
                             emoji: {type: Type.STRING},
-                            reactants: {type: Type.ARRAY, items: {type: Type.STRING}, description: "List of reactant formulas or symbols involved."},
+                            reactants: {type: Type.ARRAY, items: {type: Type.STRING}},
                             bondType: {type: Type.STRING},
+                            reactionType: {type: Type.STRING},
                             explanation: {type: Type.STRING},
                             molecularDensity: {type: Type.STRING},
                             acidBase: {type: Type.STRING},
@@ -239,6 +176,12 @@ const App: React.FC = () => {
                             molarMass: {type: Type.STRING},
                             state: {type: Type.STRING},
                             molecularGeometry: {type: Type.STRING},
+                            hybridization: {type: Type.STRING},
+                            polarity: {type: Type.STRING},
+                            solubility: {type: Type.STRING},
+                            magneticProfile: {type: Type.STRING},
+                            crystalStructure: {type: Type.STRING},
+                            discovery: {type: Type.STRING},
                             safety: {
                                 type: Type.OBJECT,
                                 properties: {
@@ -248,7 +191,7 @@ const App: React.FC = () => {
                             },
                             namingMethod: {type: Type.STRING},
                         },
-                         required: ["id", "name", "formula", "emoji", "bondType", "explanation", "reactants"]
+                         required: ["id", "name", "formula", "emoji", "bondType", "explanation"]
                     }
                 }
             }
@@ -261,9 +204,8 @@ const App: React.FC = () => {
             setFoundReactions(null);
             setError("لم يتم العثور على تفاعلات مستقرة لهذه الذرات.");
         }
-    } catch (e) {
-        console.error("Reaction check failed", e);
-        setError('حدث خطأ أثناء تحليل التفاعل.');
+    } catch (e: any) {
+        setError(e.message || 'حدث خطأ أثناء تحليل التفاعل.');
     } finally {
         setIsLoading(false);
     }
@@ -280,9 +222,9 @@ const App: React.FC = () => {
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const response = await callApiWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Simulate the chemical reaction between ${r1} and ${r2}. Provide balanced equation, type, explanation, products, and safety notes. If no reaction occurs, indicate that.`,
+            contents: `Simulate reaction between ${r1} and ${r2}. Provide balanced equation, reaction type, visual observations (color, precipitate), reaction conditions (heat, catalyst), and enthalpy.`,
              config: {
-                    systemInstruction: "You are an expert chemist. Output valid JSON. All explanations, names, and notes must be in Arabic.",
+                    systemInstruction: ACADEMIC_CHEMIST_PROMPT,
                     responseMimeType: 'application/json',
                     responseSchema: {
                         type: Type.OBJECT,
@@ -291,6 +233,9 @@ const App: React.FC = () => {
                             balancedEquation: {type: Type.STRING},
                             reactionType: {type: Type.STRING},
                             explanation: {type: Type.STRING},
+                            visualObservation: {type: Type.STRING},
+                            conditions: {type: Type.STRING},
+                            enthalpy: {type: Type.STRING},
                             products: {
                                 type: Type.ARRAY, 
                                 items: {
@@ -314,8 +259,8 @@ const App: React.FC = () => {
              setCompoundReactionResult(result);
          }
 
-    } catch (e) {
-        setCompoundReactionError("فشل في محاكاة التفاعل. حاول مرة أخرى.");
+    } catch (e: any) {
+        setCompoundReactionError(e.message || "فشل في محاكاة التفاعل.");
     } finally {
         setIsCompoundReactionLoading(false);
     }
@@ -330,11 +275,11 @@ const App: React.FC = () => {
 
       try {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          const textResponsePromise = callApiWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
+          const textResp = await callApiWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
               model: 'gemini-2.5-flash',
-              contents: `Generate detailed information for a ${family} with ${carbons} carbon atoms.`,
+              contents: `Generate info for ${family} with ${carbons} carbons. Include density, solubility details, number of isomers, toxicity/safety info, and typical reactivity.`,
               config: {
-                systemInstruction: "You are an organic chemistry expert. Output Arabic JSON with detailed properties. Ensure all text values are in Arabic.",
+                systemInstruction: ACADEMIC_CHEMIST_PROMPT,
                 responseMimeType: 'application/json',
                 responseSchema: {
                     type: Type.OBJECT,
@@ -349,30 +294,29 @@ const App: React.FC = () => {
                          iupacNaming: {type: Type.STRING},
                          boilingPoint: {type: Type.STRING},
                          meltingPoint: {type: Type.STRING},
+                         density: {type: Type.STRING},
+                         solubility: {type: Type.STRING},
+                         isomersCount: {type: Type.STRING},
+                         toxicity: {type: Type.STRING},
+                         reactivity: {type: Type.STRING},
                     },
                     required: ["name", "formula", "description"]
                 }
               }
           }));
 
-          // Updated Prompt for very clear, English-only academic structure
-          const imageResponsePromise = generateImage(`Pristine, high-resolution, academic-textbook quality 2D skeletal chemical structure diagram for a ${family} molecule with ${carbons} carbon atoms. 
-          - Pure white background.
-          - Sharp black lines.
-          - Standard English chemical symbols (e.g., OH, NH2).
-          - No text labels other than element symbols.
-          - No Arabic text.`);
+          const info = cleanAndParseJSON(textResp.text || '');
+          if (!info) throw new Error("Failed to parse compound data");
           
-          const [textResponse, imageBase64] = await Promise.all([textResponsePromise, imageResponsePromise]);
+          setOrganicCompoundInfo({...info, lewisStructureImage: 'PENDING'});
           
-          const info = cleanAndParseJSON(textResponse.text || '');
-          if (info) {
-              info.lewisStructureImage = imageBase64;
-              setOrganicCompoundInfo(info);
-          }
+          // Pass formula as 3rd arg for static lookup/fallback
+          ImageManager.getImage(`organic_${family}_${carbons}`, `Lewis structure for ${info.name}`, info.formula).then(img => {
+              setOrganicCompoundInfo(prev => prev ? {...prev, lewisStructureImage: img || undefined} : null);
+          });
 
-      } catch (e) {
-          setOrganicCompoundError("فشل في توليد بيانات المركب العضوي.");
+      } catch (e: any) {
+          setOrganicCompoundError(e.message || "فشل في توليد بيانات المركب العضوي.");
       } finally {
           setIsOrganicCompoundLoading(false);
       }
@@ -381,16 +325,16 @@ const App: React.FC = () => {
   const handleOrganicComparison = async (paramsA: { family: string; carbons: number }, paramsB: { family: string; carbons: number }) => {
       setIsOrganicCompoundLoading(true);
       setOrganicCompoundError(null);
-      setOrganicCompoundInfo(null); // Clear single view
+      setOrganicCompoundInfo(null); 
 
       try {
            const fetchData = async (family: string, carbons: number) => {
                const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
                const textResp = await callApiWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
                    model: 'gemini-2.5-flash',
-                   contents: `Generate info for ${family} with ${carbons} carbons.`,
+                   contents: `Generate info for ${family} with ${carbons} carbons. Include density, solubility, toxicity, etc.`,
                     config: {
-                        systemInstruction: "You are an organic chemistry expert. Output Arabic JSON. Ensure text is in Arabic.",
+                        systemInstruction: ACADEMIC_CHEMIST_PROMPT,
                         responseMimeType: 'application/json', 
                         responseSchema: {
                         type: Type.OBJECT,
@@ -405,25 +349,37 @@ const App: React.FC = () => {
                              iupacNaming: {type: Type.STRING},
                              boilingPoint: {type: Type.STRING},
                              meltingPoint: {type: Type.STRING},
+                             density: {type: Type.STRING},
+                             solubility: {type: Type.STRING},
+                             isomersCount: {type: Type.STRING},
+                             toxicity: {type: Type.STRING},
+                             reactivity: {type: Type.STRING},
                         }, required: ["name", "formula"]
                     }}
                }));
-               // Updated prompt
-               const imgResp = await generateImage(`Pristine, high-resolution, academic-textbook quality 2D skeletal chemical structure diagram for a ${family} with ${carbons} carbons. White background, black lines. English symbols only.`);
                const data = cleanAndParseJSON(textResp.text || '{}');
-               data.lewisStructureImage = imgResp;
                return data;
            };
 
-           const [infoA, infoB] = await Promise.all([
-               fetchData(paramsA.family, paramsA.carbons),
-               fetchData(paramsB.family, paramsB.carbons)
-           ]);
+           const infoA = await fetchData(paramsA.family, paramsA.carbons);
+           const infoB = await fetchData(paramsB.family, paramsB.carbons);
            
-           setComparisonInfo({ a: infoA, b: infoB });
+           if (infoA && infoB) {
+                // Trigger Image Fetches in background
+                infoA.lewisStructureImage = 'PENDING';
+                infoB.lewisStructureImage = 'PENDING';
+                setComparisonInfo({ a: infoA, b: infoB });
 
-      } catch (e) {
-           setOrganicCompoundError("فشل في مقارنة المركبات.");
+                ImageManager.getImage(`organic_${paramsA.family}_${paramsA.carbons}`, `Lewis structure ${infoA.name}`, infoA.formula).then(img => {
+                     setComparisonInfo(prev => prev ? {...prev, a: {...prev.a, lewisStructureImage: img || undefined}} : null);
+                });
+                ImageManager.getImage(`organic_${paramsB.family}_${paramsB.carbons}`, `Lewis structure ${infoB.name}`, infoB.formula).then(img => {
+                     setComparisonInfo(prev => prev ? {...prev, b: {...prev.b, lewisStructureImage: img || undefined}} : null);
+                });
+           }
+
+      } catch (e: any) {
+           setOrganicCompoundError(e.message || "فشل في مقارنة المركبات.");
       } finally {
           setIsOrganicCompoundLoading(false);
       }
@@ -437,11 +393,11 @@ const App: React.FC = () => {
       
       try {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          const textPromise = callApiWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
+          const textResp = await callApiWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
               model: 'gemini-2.5-flash',
-              contents: `Detailed biochemistry info for ${moleculeName}.`,
+              contents: `Detailed biochemistry info for ${moleculeName}. Include molecular weight, natural occurrence, metabolic role, and effects of deficiency/excess.`,
               config: {
-                  systemInstruction: "You are a biochemistry expert. Output Arabic JSON. Ensure text is in Arabic.",
+                  systemInstruction: ACADEMIC_CHEMIST_PROMPT,
                   responseMimeType: 'application/json',
                   responseSchema: {
                       type: Type.OBJECT,
@@ -452,21 +408,25 @@ const App: React.FC = () => {
                           type: {type: Type.STRING},
                           description: {type: Type.STRING},
                           biologicalFunction: {type: Type.STRING},
+                          molecularWeight: {type: Type.STRING},
+                          occurrence: {type: Type.STRING},
+                          metabolicRole: {type: Type.STRING},
+                          deficiencyEffects: {type: Type.STRING},
                       }, required: ["name", "formula", "description"]
                   }
               }
           }));
 
-          // Updated prompt
-          const imagePromise = generateImage(`High-quality scientific 3D structure representation of ${moleculeName} biomolecule. Clean white background. No text labels.`);
-          
-          const [textResp, imgBase64] = await Promise.all([textPromise, imagePromise]);
           const data = cleanAndParseJSON(textResp.text || '{}');
-          data.structureImage = imgBase64;
-          setBiomoleculeInfo(data);
-
-      } catch(e) {
-          setBiomoleculeError("فشل في تحميل بيانات الجزيء الحيوي.");
+          if (data) {
+             setBiomoleculeInfo({...data, structureImage: 'PENDING'});
+             // Pass formula/name as 3rd arg
+             ImageManager.getImage(`bio_${moleculeName}`, `3D structure of ${moleculeName} molecule`, moleculeName).then(img => {
+                 setBiomoleculeInfo(prev => prev ? {...prev, structureImage: img || undefined} : null);
+             });
+          }
+      } catch(e: any) {
+          setBiomoleculeError(e.message || "فشل في تحميل بيانات الجزيء الحيوي.");
       } finally {
           setIsBiomoleculeLoading(false);
       }
@@ -480,11 +440,11 @@ const App: React.FC = () => {
 
       try {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          const textPromise = callApiWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
+          const textResp = await callApiWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
               model: 'gemini-2.5-flash',
-              contents: `Simulate galvanic cell with ${metal1} and ${metal2} electrodes. Identify anode/cathode, reactions, potential.`,
+              contents: `Simulate galvanic cell with ${metal1} and ${metal2}. Calculate Gibbs free energy, cell notation, and check spontaneity.`,
               config: {
-                  systemInstruction: "You are an electrochemistry expert. Output Arabic JSON. Ensure text is in Arabic.",
+                  systemInstruction: ACADEMIC_CHEMIST_PROMPT,
                   responseMimeType: 'application/json',
                   responseSchema: {
                       type: Type.OBJECT,
@@ -495,21 +455,24 @@ const App: React.FC = () => {
                           overallReaction: {type: Type.STRING},
                           cellPotential: {type: Type.STRING},
                           explanation: {type: Type.STRING},
+                          cellNotation: {type: Type.STRING},
+                          gibbsFreeEnergy: {type: Type.STRING},
+                          spontaneity: {type: Type.STRING},
                       }, required: ["anode", "cathode", "cellPotential"]
                   }
               }
           }));
 
-          // Updated prompt
-          const imagePromise = generateImage(`Clear educational diagram of a galvanic cell with ${metal1} and ${metal2} electrodes. White background. Clearly labeled in English: Anode, Cathode, Salt Bridge, Voltmeter. No Arabic text.`);
-          
-          const [textResp, imgBase64] = await Promise.all([textPromise, imagePromise]);
           const data = cleanAndParseJSON(textResp.text || '{}');
-          data.diagramImage = imgBase64;
-          setGalvanicCellInfo(data);
+          if (data) {
+             setGalvanicCellInfo({...data, diagramImage: 'PENDING'});
+             ImageManager.getImage(`cell_${metal1}_${metal2}`, `Galvanic cell diagram ${metal1} ${metal2}`, `${metal1}-${metal2}`).then(img => {
+                 setGalvanicCellInfo(prev => prev ? {...prev, diagramImage: img || undefined} : null);
+             });
+          }
 
-      } catch(e) {
-          setGalvanicCellError("فشل في محاكاة الخلية الجلفانية.");
+      } catch(e: any) {
+          setGalvanicCellError(e.message || "فشل في محاكاة الخلية الجلفانية.");
       } finally {
           setIsGalvanicCellLoading(false);
       }
@@ -523,11 +486,11 @@ const App: React.FC = () => {
 
       try {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          const textPromise = callApiWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
+          const textResp = await callApiWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
               model: 'gemini-2.5-flash',
-              contents: `Analyze thermodynamics of: ${equation}. Calculate Delta H, S, G. Determine spontaneity.`,
+              contents: `Analyze thermodynamics of: ${equation}. Include Activation Energy (Ea), Equilibrium Constant (Keq) approximation, and rate factors list (e.g. Temperature, Surface Area).`,
               config: {
-                  systemInstruction: "You are a thermochemistry expert. Output Arabic JSON. Ensure text is in Arabic.",
+                  systemInstruction: ACADEMIC_CHEMIST_PROMPT,
                   responseMimeType: 'application/json',
                   responseSchema: {
                       type: Type.OBJECT,
@@ -540,21 +503,25 @@ const App: React.FC = () => {
                           isExothermic: {type: Type.BOOLEAN},
                           isSpontaneous: {type: Type.BOOLEAN},
                           explanation: {type: Type.STRING},
+                          energyProfileImage: {type: Type.STRING},
+                          activationEnergy: {type: Type.STRING},
+                          equilibriumConstant: {type: Type.STRING},
+                          rateFactors: {type: Type.ARRAY, items: {type: Type.STRING}},
                       }, required: ["enthalpyChange", "isExothermic", "explanation"]
                   }
               }
           }));
 
-          // Updated prompt
-          const imagePromise = generateImage(`Scientific energy profile diagram for reaction: ${equation}. White background. Clearly labeled axes in English (Potential Energy vs Reaction Coordinate). Mark Reactants, Products, Activation Energy, Delta H.`);
-
-          const [textResp, imgBase64] = await Promise.all([textPromise, imagePromise]);
           const data = cleanAndParseJSON(textResp.text || '{}');
-          data.energyProfileImage = imgBase64;
-          setThermoInfo(data);
+          if (data) {
+             setThermoInfo({...data, energyProfileImage: 'PENDING'});
+             ImageManager.getImage(`thermo_${equation.replace(/[^a-zA-Z]/g, '')}`, `Energy profile diagram for ${equation}`, 'Energy').then(img => {
+                 setThermoInfo(prev => prev ? {...prev, energyProfileImage: img || undefined} : null);
+             });
+          }
 
-      } catch (e) {
-          setThermoError("فشل في تحليل التفاعل الحراري.");
+      } catch (e: any) {
+          setThermoError(e.message || "فشل في تحليل التفاعل الحراري.");
       } finally {
           setIsThermoLoading(false);
       }
@@ -568,11 +535,11 @@ const App: React.FC = () => {
 
       try {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          const textPromise = callApiWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
+          const textResp = await callApiWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
               model: 'gemini-2.5-flash',
-              contents: `Analyze solution of ${solute} in ${solvent} at ${concentration}M. Describe dissolution, type.`,
+              contents: `Analyze solution of ${solute} in ${solvent} at ${concentration}M. Include pH estimate, colligative properties (Boiling Point Elevation, Freezing Point Depression), and conductivity.`,
               config: {
-                  systemInstruction: "You are a solution chemistry expert. Output Arabic JSON. Ensure text is in Arabic.",
+                  systemInstruction: ACADEMIC_CHEMIST_PROMPT,
                   responseMimeType: 'application/json',
                   responseSchema: {
                       type: Type.OBJECT,
@@ -584,26 +551,47 @@ const App: React.FC = () => {
                           concentrationMolarity: {type: Type.STRING},
                           solutionDescription: {type: Type.STRING},
                           solutionType: {type: Type.STRING},
+                          phLevel: {type: Type.STRING},
+                          boilingPointElevation: {type: Type.STRING},
+                          freezingPointDepression: {type: Type.STRING},
+                          conductivity: {type: Type.STRING},
                       }, required: ["solutionDescription", "solutionType"]
                   }
               }
           }));
 
-          // Updated prompt
-          const imagePromise = generateImage(`Educational diagram showing microscopic view of ${solute} molecules dissolving in ${solvent}. White background. Clear English labels.`);
-          
-          const [textResp, imgBase64] = await Promise.all([textPromise, imagePromise]);
           const data = cleanAndParseJSON(textResp.text || '{}');
-          data.solutionImage = imgBase64;
-          setSolutionInfo(data);
+          if (data) {
+             setSolutionInfo({...data, solutionImage: 'PENDING'});
+             // Pass solute formula/name as 3rd arg
+             ImageManager.getImage(`sol_${solute}_${solvent}`, `Molecular view of ${solute} in ${solvent}`, solute).then(img => {
+                 setSolutionInfo(prev => prev ? {...prev, solutionImage: img || undefined} : null);
+             });
+          }
 
-      } catch (e) {
-          setSolutionError("فشل في تحليل المحلول.");
+      } catch (e: any) {
+          setSolutionError(e.message || "فشل في تحليل المحلول.");
       } finally {
           setIsSolutionLoading(false);
       }
   };
 
+
+  if (missingApiKey) {
+    return (
+        <div className="flex h-screen w-full bg-white dark:bg-gray-900 items-center justify-center p-8 text-center">
+            <div className="max-w-xl p-8 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl">
+                <h1 className="text-3xl font-bold text-red-600 dark:text-red-400 mb-4">مفتاح API مفقود</h1>
+                <p className="text-lg text-slate-700 dark:text-slate-300 mb-4">
+                    لم يتم العثور على <code>API_KEY</code> في متغيرات البيئة.
+                </p>
+                <p className="text-slate-600 dark:text-slate-400">
+                    إذا قمت بنشر التطبيق على Vercel، تأكد من إضافته في <strong>Project Settings &gt; Environment Variables</strong>.
+                </p>
+            </div>
+        </div>
+    );
+  }
 
   if (appState === 'welcome') {
     return <WelcomeScreen onStart={() => setAppState('simulation')} />;
@@ -645,13 +633,13 @@ const App: React.FC = () => {
           <>
             <ReactionCanvas 
               atoms={placedAtoms}
-              isPaused={isLoading} // Pausing triggers the convergence animation in useAtomAnimation
+              isPaused={isLoading} 
               pauseText={null}
               canvasRef={canvasRef}
               onDrop={handleAtomDrop}
               onDragOver={handleDragOver}
             />
-             {/* Floating Controls for Atom Mode */}
+             {/* Floating Controls */}
              <div className="absolute top-20 right-4 flex flex-col gap-2 z-10">
                 <button 
                   onClick={() => { setPlacedAtoms([]); setFoundReactions(null); setSelectedReaction(null); setError(null); }}
@@ -683,7 +671,7 @@ const App: React.FC = () => {
              )}
              
              {error && (
-                <div className="absolute bottom-24 left-1/2 -translate-x-1/2 bg-red-100 dark:bg-red-900/80 border border-red-400 text-red-700 dark:text-red-200 px-4 py-3 rounded-lg shadow-lg z-20">
+                <div className="absolute bottom-24 left-1/2 -translate-x-1/2 bg-red-100 dark:bg-red-900/80 border border-red-400 text-red-700 dark:text-red-200 px-4 py-3 rounded-lg shadow-lg z-20 text-center max-w-lg">
                     <p>{error}</p>
                 </div>
              )}
@@ -741,7 +729,6 @@ const App: React.FC = () => {
                     onNew={() => setOrganicCompoundInfo(null)} 
                 />
             ) : (
-                // Placeholder when no data is loaded yet
                 <div className="flex-grow flex items-center justify-center bg-slate-100 dark:bg-slate-800/50 bg-grid dark:bg-grid">
                      <div className="text-center p-8 max-w-lg">
                         <div className="text-6xl mb-4">🌿</div>

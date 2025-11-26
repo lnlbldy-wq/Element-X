@@ -1,10 +1,12 @@
+
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title> ElementX </title>
+    <title>ElementX - المختبر الذكي</title>
+    <!-- Tailwind CSS via CDN is kept for simplicity as no local build step is configured for CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -50,23 +52,23 @@
         animation: slide-up 0.4s ease-in-out;
       }
     </style>
-  <script type="importmap">
+    <script>
+      // Polyfill process.env to prevent crashes in browser environments if accessed directly
+      if (typeof process === 'undefined') {
+        window.process = { env: {} };
+      }
+    </script>
+<script type="importmap">
 {
   "imports": {
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
     "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
     "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.27.0",
-    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
-    "vite": "https://aistudiocdn.com/vite@^7.2.4"
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
+    "vite": "https://aistudiocdn.com/vite@^7.2.4",
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1"
   }
 }
-</script>
-<script>
-  // Polyfill process.env to prevent crashes in browser environments
-  if (typeof process === 'undefined') {
-    window.process = { env: {} };
-  }
 </script>
 </head>
   <body class="bg-white dark:bg-gray-900 text-gray-900 dark:text-white transition-colors duration-300">

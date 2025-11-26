@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import type { Reaction } from '../types';
 import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
+import { cleanAndParseJSON, ImageManager } from '../utils';
 
 interface MoleculeInfoCardProps {
   reaction: Reaction;
@@ -15,86 +16,6 @@ interface ElectronConfigInfo {
     bondingExplanation: string;
 }
 
-const isRetryableError = (error: any): boolean => {
-    if (!error) return false;
-
-    const code = error?.error?.code;
-    if (code === 429 || code === 500 || code === 503) {
-        return true;
-    }
-
-    const status = (error?.error?.status || '').toUpperCase();
-    if (status === 'RESOURCE_EXHAUSTED' || status === 'UNAVAILABLE' || status === 'UNKNOWN') {
-        return true;
-    }
-    
-    const message = (error.message || error.toString() || '').toLowerCase();
-    return (
-        message.includes('429') ||
-        message.includes('500') ||
-        message.includes('503') ||
-        message.includes('quota') ||
-        message.includes('rate limit') ||
-        message.includes('resource_exhausted') ||
-        message.includes('service unavailable') ||
-        message.includes('xhr error') // Handle generic network errors
-    );
-};
-
-async function callApiWithRetry<T>(apiCall: () => Promise<T>): Promise<T> {
-    const MAX_RETRIES = 3;
-    let attempt = 0;
-    while (attempt < MAX_RETRIES) {
-        try {
-            return await apiCall();
-        } catch (error: any) {
-            attempt++;
-            if (isRetryableError(error) && attempt < MAX_RETRIES) {
-                const delay = Math.pow(2, attempt) * 10000 + Math.random() * 1000;
-                console.warn(`API call failed. Retrying in ${Math.round(delay)}ms... (Attempt ${attempt})`, error);
-                await new Promise(resolve => setTimeout(resolve, delay));
-            } else {
-                console.error("API call failed after retries or with non-retryable error.", error);
-                throw error;
-            }
-        }
-    }
-    throw new Error(`API call failed after ${MAX_RETRIES} attempts.`);
-};
-
-// Robust JSON extraction helper
-function cleanAndParseJSON(text: string): any {
-  if (!text) return null;
-  try {
-    // 1. Try strict parsing first
-    return JSON.parse(text);
-  } catch (e) {
-    // 2. Remove markdown code blocks
-    let cleaned = text.replace(/```json\s*|\s*```/gi, '').trim();
-    try {
-      return JSON.parse(cleaned);
-    } catch (e2) {
-        // 3. Last resort: Extract content between first { and last } or [ and ]
-        const firstCurly = cleaned.indexOf('{');
-        const lastCurly = cleaned.lastIndexOf('}');
-        const firstSquare = cleaned.indexOf('[');
-        const lastSquare = cleaned.lastIndexOf(']');
-
-        let jsonString = cleaned;
-
-        // Determine if it looks like an object or array and slice accordingly
-        if (firstCurly !== -1 && lastCurly !== -1 && (firstSquare === -1 || firstCurly < firstSquare)) {
-             jsonString = cleaned.substring(firstCurly, lastCurly + 1);
-        } else if (firstSquare !== -1 && lastSquare !== -1) {
-             jsonString = cleaned.substring(firstSquare, lastSquare + 1);
-        }
-        
-        return JSON.parse(jsonString);
-    }
-  }
-}
-
-
 const InfoRow: React.FC<{ label: string; value?: React.ReactNode }> = ({ label, value }) => {
     if (!value) return null;
     return (
@@ -105,8 +26,20 @@ const InfoRow: React.FC<{ label: string; value?: React.ReactNode }> = ({ label, 
     );
 };
 
+const AdvancedInfoRow: React.FC<{ label: string; value?: string; icon: string }> = ({ label, value, icon }) => {
+    if (!value) return null;
+    return (
+        <div className="bg-white dark:bg-slate-800 p-3 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm flex items-start gap-3 transition-transform hover:scale-[1.02]">
+            <div className="text-2xl bg-cyan-50 dark:bg-cyan-900/30 p-2 rounded-full">{icon}</div>
+            <div className="flex-grow text-right">
+                <div className="text-xs font-bold text-cyan-600 dark:text-cyan-400 uppercase tracking-wider mb-1">{label}</div>
+                <div className="text-sm text-slate-800 dark:text-slate-200 leading-snug">{value}</div>
+            </div>
+        </div>
+    );
+};
+
 const GHSPictogram: React.FC<{ symbol: string }> = ({ symbol }) => {
-    // FIX: Corrected GHS symbols to use standard emojis for better visual representation.
     const symbolMap: Record<string, { emoji: string, title: string }> = {
         'GHS01': { emoji: '💣', title: 'Explosive' },
         'GHS02': { emoji: '🔥', title: 'Flammable' },
@@ -137,11 +70,9 @@ export const MoleculeInfoCard: React.FC<MoleculeInfoCardProps> = ({ reaction, on
   const [showDetails, setShowDetails] = useState(false);
   const [electronConfigs, setElectronConfigs] = useState<ElectronConfigInfo[] | null>(null);
   const [isFetchingConfig, setIsFetchingConfig] = useState(false);
-  const [configError, setConfigError] = useState<string | null>(null);
 
   const [lewisImage, setLewisImage] = useState<string | null>(null);
   const [isFetchingImage, setIsFetchingImage] = useState(false);
-  const [imageError, setImageError] = useState<string | null>(null);
 
 
   const handleBalanceEquation = async () => {
@@ -150,44 +81,32 @@ export const MoleculeInfoCard: React.FC<MoleculeInfoCardProps> = ({ reaction, on
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const reactantsList = reaction.reactants || [];
-      const response: GenerateContentResponse = await callApiWithRetry(() => ai.models.generateContent({
+      const response: GenerateContentResponse = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
-        contents: `Given the reactants that form the product ${reaction.formula}, provide a balanced chemical equation and a step-by-step guide on how to balance it. The reactants involved are typically composed of: ${reactantsList.join(', ') || 'constituent atoms'}. Assume standard states for reactants (e.g., Oxygen is O₂, Hydrogen is H₂).`,
+        contents: `Given the reactants that form the product ${reaction.formula}, provide a balanced chemical equation and a step-by-step guide. Reactants: ${reactantsList.join(', ') || 'constituent atoms'}.`,
         config: {
-          systemInstruction: "You are a chemistry teacher. Provide clear, step-by-step balancing instructions in Arabic JSON format. Ensure all string values in the JSON are in Arabic.",
+          systemInstruction: "You are a chemistry teacher. Output Arabic JSON.",
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
             properties: {
-              balancedEquation: { 
-                type: Type.STRING, 
-                description: "The final balanced chemical equation as a string, e.g., '2H₂ + O₂ → 2H₂O'." 
-              },
-              steps: { 
-                type: Type.ARRAY, 
-                items: { type: Type.STRING },
-                description: "An array of strings, where each string is a step in the balancing process." 
-              }
+              balancedEquation: { type: Type.STRING },
+              steps: { type: Type.ARRAY, items: { type: Type.STRING } }
             },
             required: ["balancedEquation", "steps"]
           }
         }
-      }));
+      });
       
       const result = cleanAndParseJSON(response.text || '');
-
-      if (typeof result !== 'object' || result === null || typeof result.balancedEquation !== 'string' || !Array.isArray(result.steps)) {
-          console.error("Invalid data structure for equation balancing:", result);
-          setBalanceError('فشل في الحصول على شرح للموازنة.');
-          return;
+      if (result && result.balancedEquation) {
+          setBalancedEquation(result.balancedEquation);
+          setBalancingSteps(result.steps);
+      } else {
+          setBalanceError('فشل في الموازنة.');
       }
-
-      setBalancedEquation(result.balancedEquation);
-      setBalancingSteps(result.steps);
-
-    } catch (e) {
-      console.error("Error balancing equation:", e);
-      setBalanceError('حدث خطأ أثناء موازنة المعادلة.');
+    } catch (e: any) {
+      setBalanceError('حدث خطأ أثناء الموازنة.');
     } finally {
       setIsBalancing(false);
     }
@@ -195,14 +114,13 @@ export const MoleculeInfoCard: React.FC<MoleculeInfoCardProps> = ({ reaction, on
 
    const fetchElectronConfig = async () => {
         setIsFetchingConfig(true);
-        setConfigError(null);
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            const response: GenerateContentResponse = await callApiWithRetry(() => ai.models.generateContent({
+            const response: GenerateContentResponse = await ai.models.generateContent({
                 model: 'gemini-2.5-flash',
-                contents: `For the molecule ${reaction.name} (${reaction.formula}), provide the ground-state electron configuration for each unique type of atom in the molecule. Also, briefly explain how the valence electrons of each atom type participate in bonding to form this molecule.`,
+                contents: `Electron configuration for ${reaction.formula}.`,
                 config: {
-                    systemInstruction: "You are a quantum chemistry expert. Provide detailed electron configurations and bonding explanations in Arabic JSON. Ensure all text values are in Arabic.",
+                    systemInstruction: "Output Arabic JSON.",
                     responseMimeType: "application/json",
                     responseSchema: {
                         type: Type.OBJECT,
@@ -212,10 +130,10 @@ export const MoleculeInfoCard: React.FC<MoleculeInfoCardProps> = ({ reaction, on
                                 items: {
                                     type: Type.OBJECT,
                                     properties: {
-                                        atomSymbol: { type: Type.STRING, description: "The chemical symbol of the atom (e.g., 'C', 'O')." },
-                                        atomName: { type: Type.STRING, description: "The Arabic name of the atom (e.g., 'كربون')." },
-                                        configuration: { type: Type.STRING, description: "The full electron configuration (e.g., '1s² 2s² 2p²')." },
-                                        bondingExplanation: { type: Type.STRING, description: "A brief explanation in Arabic about its valence electrons and bonding." }
+                                        atomSymbol: { type: Type.STRING },
+                                        atomName: { type: Type.STRING },
+                                        configuration: { type: Type.STRING },
+                                        bondingExplanation: { type: Type.STRING }
                                     },
                                     required: ["atomSymbol", "atomName", "configuration", "bondingExplanation"]
                                 }
@@ -224,21 +142,13 @@ export const MoleculeInfoCard: React.FC<MoleculeInfoCardProps> = ({ reaction, on
                         required: ["configurations"]
                     }
                 }
-            }));
-
+            });
             const result = cleanAndParseJSON(response.text || '');
-
-            if (typeof result !== 'object' || result === null || !Array.isArray(result.configurations)) {
-                console.error("Invalid data structure for electron config:", result);
-                setConfigError('فشل في الحصول على التوزيع الإلكتروني.');
-                return;
+            if (result?.configurations) {
+                setElectronConfigs(result.configurations);
             }
-
-            setElectronConfigs(result.configurations);
-
-        } catch (e) {
-            console.error("Error fetching electron configuration:", e);
-            setConfigError('حدث خطأ أثناء جلب التوزيع الإلكتروني.');
+        } catch (e: any) {
+             console.error("Config fetch failed", e);
         } finally {
             setIsFetchingConfig(false);
         }
@@ -246,40 +156,11 @@ export const MoleculeInfoCard: React.FC<MoleculeInfoCardProps> = ({ reaction, on
 
     const fetchLewisImage = async () => {
       setIsFetchingImage(true);
-      setImageError(null);
       try {
-          const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          // Improved prompt for clarity and English labels
-          const response: GenerateContentResponse = await callApiWithRetry(() => ai.models.generateContent({
-              model: 'gemini-2.5-flash-image',
-              contents: {
-                  parts: [
-                      {
-                          text: `Create a pristine, high-resolution, academic-textbook quality 2D Lewis structure diagram for the molecule ${reaction.formula}. 
-                          - The background must be pure white.
-                          - Lines for bonds must be sharp and black.
-                          - Valence electrons (dots) must be clearly visible and distinct.
-                          - Use standard English chemical symbols (e.g., H, C, O, N, Cl) for the atoms.
-                          - Do NOT use any Arabic text, labels, or non-standard annotations.
-                          - The diagram should be chemically precise and easy to read.`,
-                      },
-                  ],
-              },
-              // Removed Modality.IMAGE constraint for robustness
-          }));
-
-          const partWithImageData = response?.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
-
-          if (partWithImageData?.inlineData) {
-              const base64ImageBytes: string = partWithImageData.inlineData.data;
-              const imageUrl = `data:image/png;base64,${base64ImageBytes}`;
-              setLewisImage(imageUrl);
-          } else {
-             throw new Error("No image data found in response.");
-          }
-      } catch (e) {
-          console.error("Error generating Lewis structure image:", e);
-          setImageError('فشل في إنشاء صورة تركيب لويس.');
+          const img = await ImageManager.getImage(`lewis_${reaction.formula}`, `Pristine Lewis structure for ${reaction.formula}`);
+          setLewisImage(img);
+      } catch {
+          // Ignore
       } finally {
           setIsFetchingImage(false);
       }
@@ -287,12 +168,8 @@ export const MoleculeInfoCard: React.FC<MoleculeInfoCardProps> = ({ reaction, on
 
     const handleShowDetails = async () => {
         setShowDetails(true);
-        if (!lewisImage && !isFetchingImage) {
-            await fetchLewisImage();
-        }
-        if (!electronConfigs && !isFetchingConfig) {
-            await fetchElectronConfig();
-        }
+        if (!electronConfigs && !isFetchingConfig) fetchElectronConfig();
+        if (!lewisImage && !isFetchingImage) fetchLewisImage();
     };
 
 
@@ -312,15 +189,44 @@ export const MoleculeInfoCard: React.FC<MoleculeInfoCardProps> = ({ reaction, on
         <p className="text-xl font-mono text-slate-600 dark:text-slate-300 mb-6">{reaction.formula}</p>
 
         <div className="w-full text-right bg-white/50 dark:bg-slate-900/50 p-4 rounded-lg border border-slate-300 dark:border-slate-700 mb-4">
+            <h3 className="text-lg text-slate-700 dark:text-slate-300 font-bold mb-2 border-b border-slate-200 dark:border-slate-700 pb-1">الخصائص العامة</h3>
             <dl>
-                <InfoRow label="نوع الرابطة" value={reaction.bondType} />
                 <InfoRow label="الكتلة المولية" value={reaction.molarMass} />
                 <InfoRow label="الحالة (STP)" value={reaction.state} />
                 <InfoRow label="الهندسة الجزيئية" value={reaction.molecularGeometry} />
-                <InfoRow label="حمض/قاعدة" value={reaction.acidBase} />
                 <InfoRow label="الكثافة" value={reaction.molecularDensity} />
+                <InfoRow label="نوع التفاعل" value={reaction.reactionType} />
+                <InfoRow label="نوع الرابطة" value={reaction.bondType} />
+                <InfoRow label="حمض/قاعدة" value={reaction.acidBase} />
             </dl>
         </div>
+
+        {(reaction.hybridization || reaction.polarity || reaction.solubility || reaction.magneticProfile || reaction.discovery) && (
+            <div className="w-full text-right bg-slate-50 dark:bg-slate-800/50 p-5 rounded-xl border border-slate-200 dark:border-slate-700 mb-6">
+                <div className="flex items-center gap-2 mb-4">
+                    <span className="text-2xl">🔬</span>
+                    <h3 className="text-lg text-slate-800 dark:text-white font-bold">الخصائص المتقدمة</h3>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <AdvancedInfoRow label="التهجين المداري" value={reaction.hybridization} icon="⚛️" />
+                    <AdvancedInfoRow label="القطبية" value={reaction.polarity} icon="🔌" />
+                    <AdvancedInfoRow label="الذوبانية" value={reaction.solubility} icon="💧" />
+                    <AdvancedInfoRow label="الخواص المغناطيسية" value={reaction.magneticProfile} icon="🧲" />
+                    {reaction.crystalStructure && <AdvancedInfoRow label="البنية البلورية" value={reaction.crystalStructure} icon="🧊" />}
+                </div>
+                 
+                {reaction.discovery && (
+                    <div className="mt-4 bg-amber-50 dark:bg-amber-900/20 p-4 rounded-lg border border-amber-200 dark:border-amber-800/50 flex gap-3 items-start">
+                         <span className="text-2xl">📜</span>
+                         <div>
+                             <div className="text-sm font-bold text-amber-700 dark:text-amber-400 mb-1">الاكتشاف والتاريخ</div>
+                             <p className="text-sm text-slate-700 dark:text-slate-300 italic">"{reaction.discovery}"</p>
+                         </div>
+                    </div>
+                )}
+            </div>
+        )}
         
         {reaction.safety && (reaction.safety.warnings.length > 0 || reaction.safety.ghsSymbols.length > 0) && (
             <div className="w-full text-right bg-red-100 dark:bg-red-900/50 border border-red-300 dark:border-red-700 p-4 rounded-lg mb-4">
@@ -334,26 +240,28 @@ export const MoleculeInfoCard: React.FC<MoleculeInfoCardProps> = ({ reaction, on
             </div>
         )}
 
-        {reaction.namingMethod && (
-          <div className="w-full text-right bg-white/50 dark:bg-slate-900/50 p-4 rounded-lg border border-slate-300 dark:border-slate-700 mb-4">
-              <h3 className="text-lg text-cyan-600 dark:text-cyan-400 font-semibold mb-2">طريقة التسمية</h3>
-              <p className="text-md text-slate-700 dark:text-slate-300 leading-relaxed text-right whitespace-pre-wrap">{reaction.namingMethod}</p>
-          </div>
-        )}
-        
         {showDetails && (
           <div className="w-full text-right bg-indigo-50 dark:bg-indigo-900/50 border border-indigo-300 dark:border-indigo-700 p-4 rounded-lg mb-4 animate-fade-in">
             <h3 className="text-lg text-indigo-700 dark:text-indigo-400 font-semibold mb-2">تركيب لويس</h3>
-             <div className="bg-white dark:bg-slate-900 p-4 rounded-md shadow-inner text-slate-800 dark:text-slate-200 flex justify-center items-center min-h-[150px]">
-                {isFetchingImage && <p className="animate-pulse text-slate-500 dark:text-slate-400">...جاري إنشاء الصورة</p>}
-                {imageError && <p className="text-red-500">{imageError}</p>}
-                {lewisImage && <img src={lewisImage} alt={`Lewis structure for ${reaction.name}`} className="max-w-full h-auto bg-white" />}
+             <div className="bg-white dark:bg-slate-900 p-4 rounded-md shadow-inner text-slate-800 dark:text-slate-200 flex justify-center items-center min-h-[250px] relative overflow-hidden">
+                {isFetchingImage ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center">
+                         <div className="w-12 h-12 rounded-full border-4 border-indigo-200 border-t-indigo-500 animate-spin mb-3"></div>
+                         <p className="animate-pulse text-slate-500 dark:text-slate-400 text-sm">...جاري إنشاء الصورة</p>
+                    </div>
+                ) : lewisImage ? (
+                     <img src={lewisImage} alt={`Lewis structure for ${reaction.name}`} className="max-w-full h-auto bg-white rounded shadow-sm" />
+                ) : (
+                    <div className="text-center opacity-60">
+                         <div className="text-4xl mb-2">🧪</div>
+                         <p className="text-xs text-slate-500 dark:text-slate-400">تعذر تحميل الصورة</p>
+                    </div>
+                )}
             </div>
             
             <div className="mt-4 pt-4 border-t border-indigo-200 dark:border-indigo-600">
                 <h4 className="text-md text-indigo-700 dark:text-indigo-400 font-semibold mb-2">التوزيع الإلكتروني</h4>
                 {isFetchingConfig && <p className="text-slate-500 dark:text-slate-400 animate-pulse text-center">...جاري التحميل</p>}
-                {configError && <p className="text-red-500 text-sm text-center">{configError}</p>}
                 {electronConfigs && (
                     <div className="space-y-4 text-right">
                         {electronConfigs.map((config, index) => (
@@ -380,13 +288,6 @@ export const MoleculeInfoCard: React.FC<MoleculeInfoCardProps> = ({ reaction, on
           </div>
         )}
 
-        {reaction.applications && (
-           <div className="w-full text-right bg-white/50 dark:bg-slate-900/50 p-4 rounded-lg border border-slate-300 dark:border-slate-700 mb-4">
-              <h3 className="text-lg text-cyan-600 dark:text-cyan-400 font-semibold mb-2">الاستعمالات والاستخدامات</h3>
-              <p className="text-md text-slate-700 dark:text-slate-300 leading-relaxed text-right">{reaction.applications}</p>
-          </div>
-        )}
-        
         <div className="w-full mt-4 flex flex-col gap-3">
             <div className="flex flex-col md:flex-row gap-3">
               {!showDetails && (
@@ -394,20 +295,20 @@ export const MoleculeInfoCard: React.FC<MoleculeInfoCardProps> = ({ reaction, on
                       onClick={handleShowDetails}
                       className="flex-1 bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-colors w-full text-lg"
                   >
-                     عرض تركيب لويس والتحليل الإلكتروني
+                     عرض تركيب لويس والتحليل
                   </button>
               )}
               {!balancedEquation && (
                   <button
                       onClick={handleBalanceEquation}
                       disabled={isBalancing}
-                      className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-colors w-full text-lg disabled:bg-slate-400 dark:disabled:bg-slate-600 disabled:cursor-wait"
+                      className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-colors w-full text-lg disabled:opacity-50"
                   >
                       {isBalancing ? '...يتم الوزن' : 'وزن المعادلة'}
                   </button>
               )}
             </div>
-            {balanceError && <p className="text-red-500 text-sm mt-2">{balanceError}</p>}
+            {balanceError && <p className="text-red-500 text-sm mt-2 text-center">{balanceError}</p>}
             <button 
                 onClick={onNewReaction}
                 className="bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-colors w-full text-lg mt-2"
