@@ -51,6 +51,10 @@
       .animate-slide-up {
         animation: slide-up 0.4s ease-in-out;
       }
+      @keyframes shimmer {
+        0% { transform: translateX(-100%); }
+        100% { transform: translateX(100%); }
+      }
     </style>
     <script>
       // Polyfill process.env to prevent crashes in browser environments if accessed directly

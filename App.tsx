@@ -25,6 +25,9 @@ type Theme = 'light' | 'dark';
 
 // Enhanced retry logic for TEXT ONLY
 async function callApiWithRetry<T>(apiCall: () => Promise<T>, maxRetries = 3): Promise<T> {
+    if (!process.env.API_KEY) {
+        throw new Error("مفتاح API غير موجود. يرجى إعداده في ملف .env أو إعدادات Vercel.");
+    }
     let attempt = 0;
     while (attempt < maxRetries) {
         try {
@@ -98,6 +101,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!process.env.API_KEY) {
         setMissingApiKey(true);
+        // We do NOT return/block here anymore. We allow the app to load in "Demo Mode".
     }
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
@@ -563,8 +567,13 @@ const App: React.FC = () => {
           const data = cleanAndParseJSON(textResp.text || '{}');
           if (data) {
              setSolutionInfo({...data, solutionImage: 'PENDING'});
-             // Pass solute formula/name as 3rd arg
-             ImageManager.getImage(`sol_${solute}_${solvent}`, `Molecular view of ${solute} in ${solvent}`, solute).then(img => {
+             // Use solute name for fallback SVG generation, specify 'solution' type
+             ImageManager.getImage(
+                 `sol_${solute}_${solvent}`, 
+                 `Scientific 3D illustration of ${solute} being dropped into ${solvent}, showing the dissolution process. Particles dispersing and dissolving in the liquid, reaction kinetics visualization.`, 
+                 solute,
+                 'solution'
+             ).then(img => {
                  setSolutionInfo(prev => prev ? {...prev, solutionImage: img || undefined} : null);
              });
           }
@@ -576,22 +585,6 @@ const App: React.FC = () => {
       }
   };
 
-
-  if (missingApiKey) {
-    return (
-        <div className="flex h-screen w-full bg-white dark:bg-gray-900 items-center justify-center p-8 text-center">
-            <div className="max-w-xl p-8 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl">
-                <h1 className="text-3xl font-bold text-red-600 dark:text-red-400 mb-4">مفتاح API مفقود</h1>
-                <p className="text-lg text-slate-700 dark:text-slate-300 mb-4">
-                    لم يتم العثور على <code>API_KEY</code> في متغيرات البيئة.
-                </p>
-                <p className="text-slate-600 dark:text-slate-400">
-                    إذا قمت بنشر التطبيق على Vercel، تأكد من إضافته في <strong>Project Settings &gt; Environment Variables</strong>.
-                </p>
-            </div>
-        </div>
-    );
-  }
 
   if (appState === 'welcome') {
     return <WelcomeScreen onStart={() => setAppState('simulation')} />;
@@ -628,6 +621,11 @@ const App: React.FC = () => {
       
       <main className="flex-grow flex flex-col relative h-full">
         <Header theme={theme} setTheme={setTheme} />
+        {missingApiKey && (
+            <div className="bg-red-500 text-white text-xs text-center p-1 absolute top-0 left-0 w-full z-50 opacity-90 hover:opacity-100 transition-opacity">
+                وضع العرض (Demo Mode): مفتاح API مفقود. ستعمل الصور الثابتة فقط.
+            </div>
+        )}
         
         {simulationMode === 'atoms' && (
           <>
