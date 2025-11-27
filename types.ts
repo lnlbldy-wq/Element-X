@@ -91,7 +91,7 @@ export interface BiomoleculeInfo {
   type: string;
   description: string;
   biologicalFunction: string;
-  structureImage: string;
+  structureImage?: string; // Optional to prevent build errors
   // New Fields
   molecularWeight?: string;
   occurrence?: string; // Where found in nature
@@ -112,7 +112,7 @@ export interface GalvanicCellInfo {
   overallReaction: string;
   cellPotential: string;
   explanation: string;
-  diagramImage: string;
+  diagramImage?: string; // Optional to prevent build errors
   // New Fields
   cellNotation?: string; // Zn | Zn2+ || Cu2+ | Cu
   gibbsFreeEnergy?: string; // -nFE
@@ -128,7 +128,7 @@ export interface ThermoChemistryInfo {
   isExothermic: boolean;
   isSpontaneous: boolean;
   explanation: string;
-  energyProfileImage: string; 
+  energyProfileImage?: string; // Optional to prevent build errors
   // New Fields
   activationEnergy?: string;
   equilibriumConstant?: string; // K_eq
@@ -143,7 +143,7 @@ export interface SolutionChemistryInfo {
   concentrationMolarity: string;
   solutionDescription: string;
   solutionType: string; // e.g., "محلول إلكتروليتي قوي", "محلول غير إلكتروليتي"
-  solutionImage: string;
+  solutionImage?: string; // Optional to prevent build errors
   // New Fields
   phLevel?: string;
   boilingPointElevation?: string;
