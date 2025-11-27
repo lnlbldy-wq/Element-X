@@ -210,7 +210,9 @@ export const ImageManager = {
             // Remove parentheses
             clean = clean.replace(/[\(\)]/g, '');
             
-            if (STATIC_IMAGES[clean]) return STATIC_IMAGES[clean];
+            if (STATIC_IMAGES[clean]) {
+                return STATIC_IMAGES[clean];
+            }
         }
 
         // 2. Check Local Cache
