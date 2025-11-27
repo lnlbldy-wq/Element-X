@@ -1,4 +1,3 @@
-
 import { GoogleGenAI } from "@google/genai";
 
 // --- JSON PARSING UTILITY ---
@@ -59,10 +58,10 @@ const STATIC_IMAGES: Record<string, string> = {
     'CuSO4': 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/7d/Copper-sulfate-3D-balls.png/320px-Copper-sulfate-3D-balls.png',
     'KI': 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/81/Potassium-iodide-3D-ionic.png/320px-Potassium-iodide-3D-ionic.png',
     'HNO3': 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/03/Nitric-acid-3D-balls.png/320px-Nitric-acid-3D-balls.png',
-    'Ca(OH)2': 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/82/Calcium-hydroxide-3D-balls.png/320px-Calcium-hydroxide-3D-balls.png',
+    'CaOH2': 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/82/Calcium-hydroxide-3D-balls.png/320px-Calcium-hydroxide-3D-balls.png',
     'MgSO4': 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Magnesium-sulfate-3D-balls.png/320px-Magnesium-sulfate-3D-balls.png',
     'NH4Cl': 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/35/Ammonium-chloride-3D-ionic.png/320px-Ammonium-chloride-3D-ionic.png',
-    'Pb(NO3)2': 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/32/Lead%28II%29-nitrate-3D-balls.png/320px-Lead%28II%29-nitrate-3D-balls.png',
+    'PbNO32': 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/32/Lead%28II%29-nitrate-3D-balls.png/320px-Lead%28II%29-nitrate-3D-balls.png',
     'Na2S2O3': 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/78/Sodium-thiosulfate-3D-balls.png/320px-Sodium-thiosulfate-3D-balls.png',
     'H2O2': 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2e/Hydrogen-peroxide-3D-balls.png/320px-Hydrogen-peroxide-3D-balls.png',
 };
@@ -171,7 +170,13 @@ const LocalCache = {
     set: (key: string, data: string) => {
         try {
             // Prune if storage is full
-            let totalSize = new Blob(Object.values(localStorage)).size;
+            let totalSize = 0;
+            // Safer way to check size in browser
+            for (let i = 0; i < localStorage.length; i++) {
+                 const k = localStorage.key(i);
+                 if(k) totalSize += localStorage.getItem(k)?.length || 0;
+            }
+            
             if (totalSize > MAX_CACHE_SIZE) {
                 Object.keys(localStorage).forEach(k => {
                     if (k.startsWith(CACHE_PREFIX)) {
@@ -222,9 +227,16 @@ export const ImageManager = {
     getImage: async (key: string, prompt: string, formula?: string, type: 'compound' | 'solution' = 'compound'): Promise<string | null> => {
         // 1. Check Static Library (Instant) - ONLY for compounds, not solution views
         if (type === 'compound' && formula) {
-            const normalized = formula.replace(/\(.*\)/g, '').replace(/[\u2080-\u2089]/g, (m) => String(m.codePointAt(0)! - 0x2080));
-            if (STATIC_IMAGES[normalized]) return STATIC_IMAGES[normalized];
-            if (STATIC_IMAGES[formula]) return STATIC_IMAGES[formula];
+            // Replace subscripts with regular numbers (e.g. ₂ -> 2)
+            let clean = formula.replace(/[\u2080-\u2089]/g, (m) => {
+                 const code = m.codePointAt(0);
+                 // Strict null check safety
+                 return code !== undefined ? String(code - 0x2080) : '';
+            });
+            // Remove parentheses (e.g. Ca(OH)2 -> CaOH2) to match static keys
+            clean = clean.replace(/[\(\)]/g, '');
+            
+            if (STATIC_IMAGES[clean]) return STATIC_IMAGES[clean];
         }
 
         // 2. Check Local Cache (Fast)
