@@ -33,7 +33,6 @@ export function cleanAndParseJSON(text: string): any {
 }
 
 // --- STATIC IMAGE LIBRARY (Instant Load) ---
-// High-quality public domain/CC images for common compounds
 const STATIC_IMAGES: Record<string, string> = {
     'H2O': 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/13/Water-3D-balls.png/320px-Water-3D-balls.png',
     'NaCl': 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e9/Sodium-chloride-3D-ionic.png/320px-Sodium-chloride-3D-ionic.png',
@@ -76,21 +75,20 @@ function stringToColor(str: string) {
   return '#' + '00000'.substring(0, 6 - c.length) + c;
 }
 
-// --- SOLUTION SVG GENERATOR (For Beaker View) ---
+// --- SOLUTION SVG GENERATOR ---
 function generateSolutionSVG(solute: string, solvent: string): string {
-  // Heuristic for color based on solute properties (for visual appeal)
-  let liquidColor = "#eff6ff"; // Default light blue
+  let liquidColor = "#eff6ff"; 
   const s = solute.toLowerCase();
-  let particleColor = "#1e293b"; // Dark slate
+  let particleColor = "#1e293b";
   
-  if (s.includes('cu') || s.includes('copper')) { liquidColor = "#3b82f6"; particleColor = "#1d4ed8"; } // Blue (Cu2+)
-  else if (s.includes('permanganate') || s.includes('mno4')) { liquidColor = "#a855f7"; particleColor = "#7e22ce"; } // Purple (MnO4-)
-  else if (s.includes('iron') || s.includes('fe')) { liquidColor = "#f97316"; particleColor = "#c2410c"; } // Orange/Rust
-  else if (s.includes('chromate') || s.includes('cr')) { liquidColor = "#eab308"; particleColor = "#a16207"; } // Yellow
-  else if (s.includes('nickel') || s.includes('ni')) { liquidColor = "#22c55e"; particleColor = "#15803d"; } // Green
-  else if (s.includes('cobalt') || s.includes('co')) { liquidColor = "#ec4899"; particleColor = "#be185d"; } // Pink
-  else if (s.includes('iodine') || s.includes('i2')) { liquidColor = "#a21caf"; particleColor = "#4c0519"; } // Dark Purple/Brown
-  else if (s.includes('cl') || s.includes('na') || s.includes('k')) { liquidColor = "#e0f2fe"; particleColor = "#94a3b8"; } // Clear/Light Blue
+  if (s.includes('cu') || s.includes('copper')) { liquidColor = "#3b82f6"; particleColor = "#1d4ed8"; }
+  else if (s.includes('permanganate') || s.includes('mno4')) { liquidColor = "#a855f7"; particleColor = "#7e22ce"; }
+  else if (s.includes('iron') || s.includes('fe')) { liquidColor = "#f97316"; particleColor = "#c2410c"; }
+  else if (s.includes('chromate') || s.includes('cr')) { liquidColor = "#eab308"; particleColor = "#a16207"; }
+  else if (s.includes('nickel') || s.includes('ni')) { liquidColor = "#22c55e"; particleColor = "#15803d"; }
+  else if (s.includes('cobalt') || s.includes('co')) { liquidColor = "#ec4899"; particleColor = "#be185d"; }
+  else if (s.includes('iodine') || s.includes('i2')) { liquidColor = "#a21caf"; particleColor = "#4c0519"; }
+  else if (s.includes('cl') || s.includes('na') || s.includes('k')) { liquidColor = "#e0f2fe"; particleColor = "#94a3b8"; }
   
   const svg = `
   <svg width="300" height="300" viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg">
@@ -100,35 +98,15 @@ function generateSolutionSVG(solute: string, solvent: string): string {
         <stop offset="100%" stop-color="${liquidColor}" stop-opacity="0.8" />
       </linearGradient>
     </defs>
-    
-    <!-- Background -->
     <rect width="300" height="300" fill="#f8fafc" rx="12" />
-    
-    <!-- Beaker Rim -->
     <ellipse cx="150" cy="80" rx="70" ry="10" fill="#cbd5e1" stroke="#94a3b8" stroke-width="2" />
-    
-    <!-- Beaker Body -->
     <path d="M80,80 L80,220 Q80,250 110,250 L190,250 Q220,250 220,220 L220,80" fill="none" stroke="#94a3b8" stroke-width="4" />
-    
-    <!-- Liquid -->
     <path d="M85,120 L85,220 Q85,245 110,245 L190,245 Q215,245 215,220 L215,120" fill="url(#liquidGrad)" />
     <ellipse cx="150" cy="120" rx="65" ry="8" fill="${liquidColor}" opacity="0.4" />
-    
-    <!-- Dissolving Particles (Reaction/Dissolution Animation) -->
-    <!-- Falling solid particles -->
     <circle cx="150" cy="150" r="5" fill="${particleColor}" opacity="0.9"><animate attributeName="cy" from="100" to="230" dur="2s" repeatCount="indefinite" /></circle>
     <circle cx="140" cy="140" r="4" fill="${particleColor}" opacity="0.9"><animate attributeName="cy" from="110" to="235" dur="2.5s" repeatCount="indefinite" /></circle>
-    
-    <!-- Dispersing particles at bottom -->
     <circle cx="130" cy="230" r="3" fill="${particleColor}" opacity="0.7"><animate attributeName="cx" values="130;110;130" dur="3s" repeatCount="indefinite" /><animate attributeName="cy" values="230;210;230" dur="3s" repeatCount="indefinite" /></circle>
     <circle cx="170" cy="235" r="3" fill="${particleColor}" opacity="0.7"><animate attributeName="cx" values="170;190;170" dur="4s" repeatCount="indefinite" /><animate attributeName="cy" values="235;215;235" dur="4s" repeatCount="indefinite" /></circle>
-
-    <!-- Rising Bubbles/Ions -->
-    <circle cx="120" cy="180" r="2" fill="white" opacity="0.5"><animate attributeName="cy" from="230" to="120" dur="3s" repeatCount="indefinite" /></circle>
-    <circle cx="160" cy="200" r="3" fill="white" opacity="0.5"><animate attributeName="cy" from="240" to="130" dur="4s" repeatCount="indefinite" /></circle>
-    <circle cx="180" cy="170" r="2" fill="white" opacity="0.5"><animate attributeName="cy" from="220" to="125" dur="3.5s" repeatCount="indefinite" /></circle>
-    
-    <!-- Text -->
     <text x="150" y="275" text-anchor="middle" font-family="sans-serif" font-weight="bold" font-size="16" fill="#475569">${solute}</text>
     <text x="150" y="292" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#64748b">Dissolving in ${solvent}</text>
   </svg>
@@ -137,16 +115,16 @@ function generateSolutionSVG(solute: string, solvent: string): string {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
-// --- SVG FALLBACK GENERATOR (Arabic Support) ---
+// --- SVG FALLBACK GENERATOR ---
 function generateFallbackSVG(name: string, formula: string): string {
-  const color = stringToColor(formula || name);
+  const color = stringToColor(formula || name || 'Compound');
   const svg = `
   <svg width="300" height="300" viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg">
     <rect width="300" height="300" fill="#f8fafc" rx="15" />
     <circle cx="150" cy="150" r="100" fill="${color}" opacity="0.2" />
     <circle cx="150" cy="150" r="80" fill="${color}" opacity="0.4" />
-    <text x="50%" y="45%" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-weight="bold" font-size="40" fill="#334155">${formula}</text>
-    <text x="50%" y="65%" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="20" fill="#64748b">${name}</text>
+    <text x="50%" y="45%" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-weight="bold" font-size="40" fill="#334155">${formula || '?'}</text>
+    <text x="50%" y="65%" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="20" fill="#64748b">${name || ''}</text>
   </svg>
   `;
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
@@ -154,7 +132,7 @@ function generateFallbackSVG(name: string, formula: string): string {
 
 // --- LOCAL STORAGE CACHE MANAGER ---
 const CACHE_PREFIX = 'elementx_img_';
-const MAX_CACHE_SIZE = 4 * 1024 * 1024; // 4MB limit for images
+const MAX_CACHE_SIZE = 4 * 1024 * 1024;
 
 const LocalCache = {
     get: (key: string): string | null => {
@@ -169,9 +147,7 @@ const LocalCache = {
     },
     set: (key: string, data: string) => {
         try {
-            // Prune if storage is full
             let totalSize = 0;
-            // Safer way to check size in browser
             for (let i = 0; i < localStorage.length; i++) {
                  const k = localStorage.key(i);
                  if(k) totalSize += localStorage.getItem(k)?.length || 0;
@@ -193,11 +169,10 @@ const LocalCache = {
     }
 };
 
-// --- IMAGE QUEUE MANAGER ---
 class ImageQueue {
     private queue: (() => Promise<void>)[] = [];
     private processing = false;
-    private delay = 2000; // 2s delay to respect rate limits
+    private delay = 2000;
 
     add(task: () => Promise<void>) {
         this.queue.push(task);
@@ -225,26 +200,26 @@ const imageQueue = new ImageQueue();
 // --- MAIN IMAGE MANAGER ---
 export const ImageManager = {
     getImage: async (key: string, prompt: string, formula?: string, type: 'compound' | 'solution' = 'compound'): Promise<string | null> => {
-        // 1. Check Static Library (Instant) - ONLY for compounds, not solution views
+        // 1. Check Static Library
         if (type === 'compound' && formula) {
-            // Replace subscripts with regular numbers (e.g. ₂ -> 2)
+            // Replace subscripts with normal numbers safely
             let clean = formula.replace(/[\u2080-\u2089]/g, (m) => {
                  const code = m.codePointAt(0);
-                 // Strict null check safety
                  return code !== undefined ? String(code - 0x2080) : '';
             });
-            // Remove parentheses (e.g. Ca(OH)2 -> CaOH2) to match static keys
+            // Remove parentheses
             clean = clean.replace(/[\(\)]/g, '');
             
             if (STATIC_IMAGES[clean]) return STATIC_IMAGES[clean];
         }
 
-        // 2. Check Local Cache (Fast)
+        // 2. Check Local Cache
         const cached = LocalCache.get(key);
         if (cached) return cached;
 
-        // 3. Fallback immediately if no API key (Offline mode)
-        if (!process.env.API_KEY) {
+        // 3. Fallback if offline
+        const apiKey = process.env.API_KEY;
+        if (!apiKey) {
             if (type === 'solution') return generateSolutionSVG(formula || 'Solute', 'Water');
             return generateFallbackSVG(prompt.split(' ').pop() || 'Compound', formula || '');
         }
@@ -253,7 +228,7 @@ export const ImageManager = {
         return new Promise((resolve) => {
             imageQueue.add(async () => {
                 try {
-                    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+                    const ai = new GoogleGenAI({ apiKey: apiKey });
                     const response = await ai.models.generateContent({
                         model: 'gemini-2.5-flash-image',
                         contents: {
@@ -262,7 +237,6 @@ export const ImageManager = {
                         config: {}
                     });
 
-                    // Extract image
                     let base64Image = null;
                     if (response.candidates && response.candidates[0].content && response.candidates[0].content.parts) {
                         for (const part of response.candidates[0].content.parts) {
@@ -277,7 +251,6 @@ export const ImageManager = {
                         LocalCache.set(key, base64Image);
                         resolve(base64Image);
                     } else {
-                        // API returned text/refusal, fallback
                         if (type === 'solution') resolve(generateSolutionSVG(formula || 'Solute', 'Water'));
                         else resolve(generateFallbackSVG(prompt, formula || ''));
                     }

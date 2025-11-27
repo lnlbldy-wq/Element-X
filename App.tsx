@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
+import React, { useState, useEffect, useRef } from 'react';
+import { Type } from "@google/genai";
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { ReactionCanvas } from './components/ReactionCanvas';
@@ -16,39 +16,13 @@ import { ThermoChemistryCard } from './components/ThermoChemistryCard';
 import { SolutionChemistryCard } from './components/SolutionChemistryCard';
 import { CompoundSelector } from './components/CompoundSelector';
 import { ATOMS } from './constants';
-import { cleanAndParseJSON, ImageManager } from './utils';
+import { ImageManager } from './utils';
+import { aiService } from './api';
 import type { Atom, Reaction, CompoundReaction, OrganicCompoundInfo, BiomoleculeInfo, GalvanicCellInfo, ThermoChemistryInfo, SolutionChemistryInfo } from './types';
 
 type AppState = 'welcome' | 'simulation';
 type SimulationMode = 'atoms' | 'compounds' | 'organic' | 'biochemistry' | 'electrochemistry' | 'thermochemistry' | 'solution';
 type Theme = 'light' | 'dark';
-
-// Enhanced retry logic for TEXT ONLY
-async function callApiWithRetry<T>(apiCall: () => Promise<T>, maxRetries = 3): Promise<T> {
-    if (!process.env.API_KEY) {
-        throw new Error("مفتاح API غير موجود. يرجى إعداده في ملف .env أو إعدادات Vercel.");
-    }
-    let attempt = 0;
-    while (attempt < maxRetries) {
-        try {
-            return await apiCall();
-        } catch (error: any) {
-            attempt++;
-            if (attempt >= maxRetries) throw error;
-            await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt)));
-        }
-    }
-    throw new Error("Failed after retries");
-};
-
-// SHARED SYSTEM INSTRUCTION FOR ACADEMIC ARABIC
-const ACADEMIC_CHEMIST_PROMPT = `
-You are an expert Academic Chemistry Professor (بروفيسور كيميائي أكاديمي). 
-Your goal is to provide highly accurate, scientific, and educational responses in fluent, eloquent Arabic (اللغة العربية الفصحى السلسة).
-Avoid robotic or literal translations. Use proper scientific terminology.
-Provide deep insights, historical context where relevant, and clear explanations.
-Always ensure the output is valid JSON strictly adhering to the schema.
-`;
 
 const App: React.FC = () => {
   const [appState, setAppState] = useState<AppState>('welcome');
@@ -152,56 +126,50 @@ const App: React.FC = () => {
         
         const atomString = Object.entries(atomCounts).map(([sym, count]) => `${count} ${sym}`).join(', ');
 
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const response = await callApiWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `Identify up to 3 possible chemical reactions or molecules formed by exactly these atoms: ${atomString}. 
+        const result = await aiService.generateContent<Reaction[]>(
+            'gemini-2.5-flash',
+            `Identify up to 3 possible chemical reactions or molecules formed by exactly these atoms: ${atomString}. 
             If the atoms can form a stable molecule, return it. Classify reaction type. Provide detailed advanced properties like hybridization, polarity, etc.`,
-            config: {
-                systemInstruction: ACADEMIC_CHEMIST_PROMPT,
-                responseMimeType: 'application/json',
-                responseSchema: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            id: {type: Type.STRING},
-                            name: {type: Type.STRING},
-                            formula: {type: Type.STRING},
-                            emoji: {type: Type.STRING},
-                            reactants: {type: Type.ARRAY, items: {type: Type.STRING}},
-                            bondType: {type: Type.STRING},
-                            reactionType: {type: Type.STRING},
-                            explanation: {type: Type.STRING},
-                            molecularDensity: {type: Type.STRING},
-                            acidBase: {type: Type.STRING},
-                            applications: {type: Type.STRING},
-                            commonality: {type: Type.STRING},
-                            molarMass: {type: Type.STRING},
-                            state: {type: Type.STRING},
-                            molecularGeometry: {type: Type.STRING},
-                            hybridization: {type: Type.STRING},
-                            polarity: {type: Type.STRING},
-                            solubility: {type: Type.STRING},
-                            magneticProfile: {type: Type.STRING},
-                            crystalStructure: {type: Type.STRING},
-                            discovery: {type: Type.STRING},
-                            safety: {
-                                type: Type.OBJECT,
-                                properties: {
-                                    warnings: {type: Type.ARRAY, items: {type: Type.STRING}},
-                                    ghsSymbols: {type: Type.ARRAY, items: {type: Type.STRING}}
-                                }
-                            },
-                            namingMethod: {type: Type.STRING},
+            {
+                type: Type.ARRAY,
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                        id: {type: Type.STRING},
+                        name: {type: Type.STRING},
+                        formula: {type: Type.STRING},
+                        emoji: {type: Type.STRING},
+                        reactants: {type: Type.ARRAY, items: {type: Type.STRING}},
+                        bondType: {type: Type.STRING},
+                        reactionType: {type: Type.STRING},
+                        explanation: {type: Type.STRING},
+                        molecularDensity: {type: Type.STRING},
+                        acidBase: {type: Type.STRING},
+                        applications: {type: Type.STRING},
+                        commonality: {type: Type.STRING},
+                        molarMass: {type: Type.STRING},
+                        state: {type: Type.STRING},
+                        molecularGeometry: {type: Type.STRING},
+                        hybridization: {type: Type.STRING},
+                        polarity: {type: Type.STRING},
+                        solubility: {type: Type.STRING},
+                        magneticProfile: {type: Type.STRING},
+                        crystalStructure: {type: Type.STRING},
+                        discovery: {type: Type.STRING},
+                        safety: {
+                            type: Type.OBJECT,
+                            properties: {
+                                warnings: {type: Type.ARRAY, items: {type: Type.STRING}},
+                                ghsSymbols: {type: Type.ARRAY, items: {type: Type.STRING}}
+                            }
                         },
-                         required: ["id", "name", "formula", "emoji", "bondType", "explanation"]
-                    }
+                        namingMethod: {type: Type.STRING},
+                    },
+                     required: ["id", "name", "formula", "emoji", "bondType", "explanation"]
                 }
             }
-        }));
+        );
         
-        const result = cleanAndParseJSON(response.text || '');
         if (Array.isArray(result) && result.length > 0) {
              setFoundReactions(result);
         } else {
@@ -223,42 +191,36 @@ const App: React.FC = () => {
     setCompoundReactionResult(null);
 
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const response = await callApiWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `Simulate reaction between ${r1} and ${r2}. Provide balanced equation, reaction type, visual observations (color, precipitate), reaction conditions (heat, catalyst), and enthalpy.`,
-             config: {
-                    systemInstruction: ACADEMIC_CHEMIST_PROMPT,
-                    responseMimeType: 'application/json',
-                    responseSchema: {
-                        type: Type.OBJECT,
-                        properties: {
-                            id: {type: Type.STRING},
-                            balancedEquation: {type: Type.STRING},
-                            reactionType: {type: Type.STRING},
-                            explanation: {type: Type.STRING},
-                            visualObservation: {type: Type.STRING},
-                            conditions: {type: Type.STRING},
-                            enthalpy: {type: Type.STRING},
-                            products: {
-                                type: Type.ARRAY, 
-                                items: {
-                                    type: Type.OBJECT,
-                                    properties: {
-                                        name: {type: Type.STRING},
-                                        formula: {type: Type.STRING},
-                                        state: {type: Type.STRING},
-                                    }
-                                }
-                            },
-                            safetyNotes: {type: Type.ARRAY, items: {type: Type.STRING}},
-                        },
-                        required: ["id", "balancedEquation", "reactionType", "explanation"]
-                    }
-             }
-        }));
+        const result = await aiService.generateContent<CompoundReaction>(
+            'gemini-2.5-flash',
+            `Simulate reaction between ${r1} and ${r2}. Provide balanced equation, reaction type, visual observations (color, precipitate), reaction conditions (heat, catalyst), and enthalpy.`,
+            {
+                type: Type.OBJECT,
+                properties: {
+                    id: {type: Type.STRING},
+                    balancedEquation: {type: Type.STRING},
+                    reactionType: {type: Type.STRING},
+                    explanation: {type: Type.STRING},
+                    visualObservation: {type: Type.STRING},
+                    conditions: {type: Type.STRING},
+                    enthalpy: {type: Type.STRING},
+                    products: {
+                        type: Type.ARRAY, 
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                name: {type: Type.STRING},
+                                formula: {type: Type.STRING},
+                                state: {type: Type.STRING},
+                            }
+                        }
+                    },
+                    safetyNotes: {type: Type.ARRAY, items: {type: Type.STRING}},
+                },
+                required: ["id", "balancedEquation", "reactionType", "explanation"]
+            }
+        );
 
-         const result = cleanAndParseJSON(response.text || '');
          if (result) {
              setCompoundReactionResult(result);
          }
@@ -278,14 +240,10 @@ const App: React.FC = () => {
       setComparisonInfo(null);
 
       try {
-          const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          const textResp = await callApiWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
-              model: 'gemini-2.5-flash',
-              contents: `Generate info for ${family} with ${carbons} carbons. Include density, solubility details, number of isomers, toxicity/safety info, and typical reactivity.`,
-              config: {
-                systemInstruction: ACADEMIC_CHEMIST_PROMPT,
-                responseMimeType: 'application/json',
-                responseSchema: {
+          const info = await aiService.generateContent<OrganicCompoundInfo>(
+              'gemini-2.5-flash',
+              `Generate info for ${family} with ${carbons} carbons. Include density, solubility details, number of isomers, toxicity/safety info, and typical reactivity.`,
+              {
                     type: Type.OBJECT,
                     properties: {
                          id: {type: Type.STRING},
@@ -305,11 +263,9 @@ const App: React.FC = () => {
                          reactivity: {type: Type.STRING},
                     },
                     required: ["name", "formula", "description"]
-                }
               }
-          }));
+          );
 
-          const info = cleanAndParseJSON(textResp.text || '');
           if (!info) throw new Error("Failed to parse compound data");
           
           setOrganicCompoundInfo({...info, lewisStructureImage: 'PENDING'});
@@ -333,14 +289,10 @@ const App: React.FC = () => {
 
       try {
            const fetchData = async (family: string, carbons: number) => {
-               const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-               const textResp = await callApiWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
-                   model: 'gemini-2.5-flash',
-                   contents: `Generate info for ${family} with ${carbons} carbons. Include density, solubility, toxicity, etc.`,
-                    config: {
-                        systemInstruction: ACADEMIC_CHEMIST_PROMPT,
-                        responseMimeType: 'application/json', 
-                        responseSchema: {
+               const data = await aiService.generateContent<OrganicCompoundInfo>(
+                   'gemini-2.5-flash',
+                   `Generate info for ${family} with ${carbons} carbons. Include density, solubility, toxicity, etc.`,
+                    {
                         type: Type.OBJECT,
                         properties: {
                              id: {type: Type.STRING},
@@ -359,9 +311,8 @@ const App: React.FC = () => {
                              toxicity: {type: Type.STRING},
                              reactivity: {type: Type.STRING},
                         }, required: ["name", "formula"]
-                    }}
-               }));
-               const data = cleanAndParseJSON(textResp.text || '{}');
+                    }
+               );
                return data;
            };
 
@@ -396,32 +347,26 @@ const App: React.FC = () => {
       setBiomoleculeInfo(null);
       
       try {
-          const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          const textResp = await callApiWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
-              model: 'gemini-2.5-flash',
-              contents: `Detailed biochemistry info for ${moleculeName}. Include molecular weight, natural occurrence, metabolic role, and effects of deficiency/excess.`,
-              config: {
-                  systemInstruction: ACADEMIC_CHEMIST_PROMPT,
-                  responseMimeType: 'application/json',
-                  responseSchema: {
-                      type: Type.OBJECT,
-                      properties: {
-                          id: {type: Type.STRING},
-                          name: {type: Type.STRING},
-                          formula: {type: Type.STRING},
-                          type: {type: Type.STRING},
-                          description: {type: Type.STRING},
-                          biologicalFunction: {type: Type.STRING},
-                          molecularWeight: {type: Type.STRING},
-                          occurrence: {type: Type.STRING},
-                          metabolicRole: {type: Type.STRING},
-                          deficiencyEffects: {type: Type.STRING},
-                      }, required: ["name", "formula", "description"]
-                  }
+          const data = await aiService.generateContent<BiomoleculeInfo>(
+              'gemini-2.5-flash',
+              `Detailed biochemistry info for ${moleculeName}. Include molecular weight, natural occurrence, metabolic role, and effects of deficiency/excess.`,
+              {
+                  type: Type.OBJECT,
+                  properties: {
+                      id: {type: Type.STRING},
+                      name: {type: Type.STRING},
+                      formula: {type: Type.STRING},
+                      type: {type: Type.STRING},
+                      description: {type: Type.STRING},
+                      biologicalFunction: {type: Type.STRING},
+                      molecularWeight: {type: Type.STRING},
+                      occurrence: {type: Type.STRING},
+                      metabolicRole: {type: Type.STRING},
+                      deficiencyEffects: {type: Type.STRING},
+                  }, required: ["name", "formula", "description"]
               }
-          }));
+          );
 
-          const data = cleanAndParseJSON(textResp.text || '{}');
           if (data) {
              setBiomoleculeInfo({...data, structureImage: 'PENDING'});
              // Pass formula/name as 3rd arg
@@ -443,31 +388,25 @@ const App: React.FC = () => {
       setGalvanicCellInfo(null);
 
       try {
-          const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          const textResp = await callApiWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
-              model: 'gemini-2.5-flash',
-              contents: `Simulate galvanic cell with ${metal1} and ${metal2}. Calculate Gibbs free energy, cell notation, and check spontaneity.`,
-              config: {
-                  systemInstruction: ACADEMIC_CHEMIST_PROMPT,
-                  responseMimeType: 'application/json',
-                  responseSchema: {
-                      type: Type.OBJECT,
-                      properties: {
-                          id: {type: Type.STRING},
-                          anode: {type: Type.OBJECT, properties: {metal: {type: Type.STRING}, halfReaction: {type: Type.STRING}}},
-                          cathode: {type: Type.OBJECT, properties: {metal: {type: Type.STRING}, halfReaction: {type: Type.STRING}}},
-                          overallReaction: {type: Type.STRING},
-                          cellPotential: {type: Type.STRING},
-                          explanation: {type: Type.STRING},
-                          cellNotation: {type: Type.STRING},
-                          gibbsFreeEnergy: {type: Type.STRING},
-                          spontaneity: {type: Type.STRING},
-                      }, required: ["anode", "cathode", "cellPotential"]
-                  }
+          const data = await aiService.generateContent<GalvanicCellInfo>(
+              'gemini-2.5-flash',
+              `Simulate galvanic cell with ${metal1} and ${metal2}. Calculate Gibbs free energy, cell notation, and check spontaneity.`,
+              {
+                  type: Type.OBJECT,
+                  properties: {
+                      id: {type: Type.STRING},
+                      anode: {type: Type.OBJECT, properties: {metal: {type: Type.STRING}, halfReaction: {type: Type.STRING}}},
+                      cathode: {type: Type.OBJECT, properties: {metal: {type: Type.STRING}, halfReaction: {type: Type.STRING}}},
+                      overallReaction: {type: Type.STRING},
+                      cellPotential: {type: Type.STRING},
+                      explanation: {type: Type.STRING},
+                      cellNotation: {type: Type.STRING},
+                      gibbsFreeEnergy: {type: Type.STRING},
+                      spontaneity: {type: Type.STRING},
+                  }, required: ["anode", "cathode", "cellPotential"]
               }
-          }));
+          );
 
-          const data = cleanAndParseJSON(textResp.text || '{}');
           if (data) {
              setGalvanicCellInfo({...data, diagramImage: 'PENDING'});
              ImageManager.getImage(`cell_${metal1}_${metal2}`, `Galvanic cell diagram ${metal1} ${metal2}`, `${metal1}-${metal2}`).then(img => {
@@ -489,34 +428,28 @@ const App: React.FC = () => {
       setThermoInfo(null);
 
       try {
-          const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          const textResp = await callApiWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
-              model: 'gemini-2.5-flash',
-              contents: `Analyze thermodynamics of: ${equation}. Include Activation Energy (Ea), Equilibrium Constant (Keq) approximation, and rate factors list (e.g. Temperature, Surface Area).`,
-              config: {
-                  systemInstruction: ACADEMIC_CHEMIST_PROMPT,
-                  responseMimeType: 'application/json',
-                  responseSchema: {
-                      type: Type.OBJECT,
-                      properties: {
-                          id: {type: Type.STRING},
-                          equation: {type: Type.STRING},
-                          enthalpyChange: {type: Type.STRING},
-                          entropyChange: {type: Type.STRING},
-                          gibbsFreeEnergyChange: {type: Type.STRING},
-                          isExothermic: {type: Type.BOOLEAN},
-                          isSpontaneous: {type: Type.BOOLEAN},
-                          explanation: {type: Type.STRING},
-                          energyProfileImage: {type: Type.STRING},
-                          activationEnergy: {type: Type.STRING},
-                          equilibriumConstant: {type: Type.STRING},
-                          rateFactors: {type: Type.ARRAY, items: {type: Type.STRING}},
-                      }, required: ["enthalpyChange", "isExothermic", "explanation"]
-                  }
+          const data = await aiService.generateContent<ThermoChemistryInfo>(
+              'gemini-2.5-flash',
+              `Analyze thermodynamics of: ${equation}. Include Activation Energy (Ea), Equilibrium Constant (Keq) approximation, and rate factors list (e.g. Temperature, Surface Area).`,
+              {
+                  type: Type.OBJECT,
+                  properties: {
+                      id: {type: Type.STRING},
+                      equation: {type: Type.STRING},
+                      enthalpyChange: {type: Type.STRING},
+                      entropyChange: {type: Type.STRING},
+                      gibbsFreeEnergyChange: {type: Type.STRING},
+                      isExothermic: {type: Type.BOOLEAN},
+                      isSpontaneous: {type: Type.BOOLEAN},
+                      explanation: {type: Type.STRING},
+                      energyProfileImage: {type: Type.STRING},
+                      activationEnergy: {type: Type.STRING},
+                      equilibriumConstant: {type: Type.STRING},
+                      rateFactors: {type: Type.ARRAY, items: {type: Type.STRING}},
+                  }, required: ["enthalpyChange", "isExothermic", "explanation"]
               }
-          }));
+          );
 
-          const data = cleanAndParseJSON(textResp.text || '{}');
           if (data) {
              setThermoInfo({...data, energyProfileImage: 'PENDING'});
              ImageManager.getImage(`thermo_${equation.replace(/[^a-zA-Z]/g, '')}`, `Energy profile diagram for ${equation}`, 'Energy').then(img => {
@@ -538,33 +471,27 @@ const App: React.FC = () => {
       setSolutionInfo(null);
 
       try {
-          const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          const textResp = await callApiWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
-              model: 'gemini-2.5-flash',
-              contents: `Analyze solution of ${solute} in ${solvent} at ${concentration}M. Include pH estimate, colligative properties (Boiling Point Elevation, Freezing Point Depression), and conductivity.`,
-              config: {
-                  systemInstruction: ACADEMIC_CHEMIST_PROMPT,
-                  responseMimeType: 'application/json',
-                  responseSchema: {
-                      type: Type.OBJECT,
-                      properties: {
-                          id: {type: Type.STRING},
-                          soluteName: {type: Type.STRING},
-                          soluteFormula: {type: Type.STRING},
-                          solventName: {type: Type.STRING},
-                          concentrationMolarity: {type: Type.STRING},
-                          solutionDescription: {type: Type.STRING},
-                          solutionType: {type: Type.STRING},
-                          phLevel: {type: Type.STRING},
-                          boilingPointElevation: {type: Type.STRING},
-                          freezingPointDepression: {type: Type.STRING},
-                          conductivity: {type: Type.STRING},
-                      }, required: ["solutionDescription", "solutionType"]
-                  }
+          const data = await aiService.generateContent<SolutionChemistryInfo>(
+              'gemini-2.5-flash',
+              `Analyze solution of ${solute} in ${solvent} at ${concentration}M. Include pH estimate, colligative properties (Boiling Point Elevation, Freezing Point Depression), and conductivity.`,
+              {
+                  type: Type.OBJECT,
+                  properties: {
+                      id: {type: Type.STRING},
+                      soluteName: {type: Type.STRING},
+                      soluteFormula: {type: Type.STRING},
+                      solventName: {type: Type.STRING},
+                      concentrationMolarity: {type: Type.STRING},
+                      solutionDescription: {type: Type.STRING},
+                      solutionType: {type: Type.STRING},
+                      phLevel: {type: Type.STRING},
+                      boilingPointElevation: {type: Type.STRING},
+                      freezingPointDepression: {type: Type.STRING},
+                      conductivity: {type: Type.STRING},
+                  }, required: ["solutionDescription", "solutionType"]
               }
-          }));
+          );
 
-          const data = cleanAndParseJSON(textResp.text || '{}');
           if (data) {
              setSolutionInfo({...data, solutionImage: 'PENDING'});
              // Use solute name for fallback SVG generation, specify 'solution' type
